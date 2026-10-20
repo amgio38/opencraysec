@@ -49,7 +49,7 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
       - name: cargo test
-        run: cargo test --workspace --locked --no-fail-fast
+        run: cargo test --workspace --locked
 
       - name: layering check
         run: |
@@ -132,4 +132,4 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: cargo test
-        run: cargo test --workspace --locked --no-fail-fast
+        run: cargo test --workspace --locked
