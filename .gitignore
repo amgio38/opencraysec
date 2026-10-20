@@ -1,0 +1,62 @@
+# Build output
+/target
+/dist
+**/*.rs.bk
+
+# Private working notes: operator/developer-local, never published. `internal/`
+# holds review knowledge and open decision logs; `test.md` is a local
+# pre-publication checklist. ADR-016 keeps both out of the public tree, and
+# scripts/clean-export.sh excludes them from the export as well.
+internal/
+/test.md
+
+# Test, fuzz and coverage artefacts
+*.profraw
+*.profdata
+lcov.info
+/coverage
+/fuzz/target
+/fuzz/artifacts
+/fuzz/corpus
+*.log
+
+# Local secrets and credentials: never commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.cargo/credentials
+.cargo/credentials.toml
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local tool and AI-agent state (per developer, not part of the project)
+.claude/
+.cray/
+.cursor/
+.opencode/
+.codex/
+
+CLAUDE.local.md
+
+# Scratch files
+*.tmp
+*.bak
+*.orig
+*.rej
+__pycache__/
+*.pyc

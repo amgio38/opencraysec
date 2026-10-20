@@ -1,0 +1,29 @@
+[package]
+name = "opencraysec-mcp"
+description = "opencraysec mcp crate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+opencraysec-core.workspace = true
+opencraysec-engine.workspace = true
+opencraysec-log.workspace = true
+opencraysec-db.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+zip.workspace = true
+flate2.workspace = true
+opencraysec-log.workspace = true
+opencraysec-db = { workspace = true, features = ["testutil"] }

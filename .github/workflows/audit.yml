@@ -1,0 +1,77 @@
+# Dependency vulnerability audit for opencraysec.
+#
+# A tool that tells people which of their dependencies are vulnerable has to keep its own clean.
+# `ci.yml` runs `cargo-deny` on every push; `cargo-audit` is separate because it needs a network
+# advisory database and runs on a schedule instead of per commit. Dependabot (see
+# .github/dependabot.yml) opens the update pull requests; this workflow tells us when one is due.
+#
+# HONEST CAVEAT — read before trusting this as a guarantee:
+#   A GitHub Actions `schedule:` trigger is best-effort, NOT a guarantee:
+#     * it fires ONLY on the default branch, never on a fork or a pull request;
+#     * GitHub disables scheduled workflows in public repositories with no activity
+#       for 60 days, and may delay or drop a run at high load;
+#     * the timer is per-repository and not exact — a run can land hours late.
+#   So the accurate claim is "advisories are re-checked on a weekly schedule while the
+#   repository is active", not "a vulnerability is always caught within N days".
+#   `ci.yml`'s `cargo-deny` still runs on every push and is the per-commit floor.
+#
+# The advisory database is fetched over the network from the RustSec advisory DB,
+# exactly as a maintainer running `cargo audit` locally would. There is deliberately
+# no offline snapshot committed to the repository: a stale vendored DB would report
+# "no known vulnerabilities" for advisories published after the snapshot, which is
+# worse than an obviously-live fetch. `deny.toml` remains the policy file for
+# `cargo-deny` (licences, advisories, sources, bans) and is unchanged.
+name: audit
+
+"on":
+  schedule:
+    # Weekly, Monday 03:17 UTC. An off-the-hour minute is deliberate: the scheduler
+    # is known to bunch up on the hour, and this keeps the job out of that stampede.
+    - cron: "17 3 * * 1"
+  # Also runnable by hand from the Actions tab, and on demand for a release tag.
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-audit:
+    name: cargo-audit (RustSec advisories)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: 1.95.0
+
+      - name: Cache cargo-audit binary
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin
+          key: cargo-audit-${{ runner.os }}
+
+      # The cache step above restores ~/.cargo/bin, so on every run after the first
+      # the binary is already there and a bare `cargo install` exits 101 with
+      # "binary `cargo-audit` already exists in destination". Install only when absent.
+      - name: Install cargo-audit
+        run: command -v cargo-audit >/dev/null 2>&1 || cargo install cargo-audit --locked
+
+      - name: Run cargo audit
+        run: cargo audit
+
+      # `--json` output is kept as an artifact for a release note or a post-mortem.
+      - name: Archive the JSON report
+        if: always()
+        run: cargo audit --json > audit-report.json || true
+
+      - name: Upload the JSON report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cargo-audit-report
+          path: audit-report.json

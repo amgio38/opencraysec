@@ -1,0 +1,44 @@
+name: Feature request
+description: Suggest an improvement
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation, not the solution. What were you doing, and what got in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - A new ecosystem or lockfile format
+        - Advisory data sources
+        - Usage evidence (reachability)
+        - Code rules (scan-code)
+        - MCP tools
+        - Dashboard / report
+        - Installer / release
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What have you tried instead?
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Before you submit
+      options:
+        - label: I checked the README and docs/ and this is not already possible.
+          required: true

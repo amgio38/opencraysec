@@ -1,0 +1,56 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/lockfile",
+    "crates/db",
+    "crates/engine",
+    "crates/log",
+    "crates/web",
+    "crates/mcp",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.20261020.1"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+publish = false
+repository = "https://github.com/amgio38/opencraysec"
+homepage = "https://github.com/amgio38/opencraysec"
+readme = "README.md"
+categories = ["development-tools", "command-line-utilities"]
+keywords = ["security", "cve", "vulnerability", "mcp", "llm"]
+
+[workspace.dependencies]
+opencraysec-core = { path = "crates/core", version = "0.20261020.1" }
+opencraysec-lockfile = { path = "crates/lockfile", version = "0.20261020.1" }
+opencraysec-db = { path = "crates/db", version = "0.20261020.1" }
+opencraysec-engine = { path = "crates/engine", version = "0.20261020.1" }
+opencraysec-log = { path = "crates/log", version = "0.20261020.1" }
+opencraysec-web = { path = "crates/web", version = "0.20261020.1" }
+opencraysec-mcp = { path = "crates/mcp", version = "0.20261020.1" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = { version = "1", default-features = false, features = ["parse", "std", "serde"] }
+ureq = { version = "3", default-features = false, features = ["rustls", "gzip", "json"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
+flate2 = "1"
+clap = { version = "4.5", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
+regex = "1"
+tempfile = "3"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

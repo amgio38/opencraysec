@@ -1,0 +1,46 @@
+opencraysec
+Copyright 2026 The opencraysec Authors
+
+This product includes software developed by third parties.
+
+The program is distributed under the MIT License (see LICENSE). The Rust crates it is built
+from are under MIT, Apache-2.0, ISC, BSD-3-Clause, Zlib, Unicode-3.0 or CDLA-Permissive-2.0,
+and those licences require their text to accompany a redistribution. The texts are in the
+licenses/ directory, and every dependency, the licence it declares and the licence this
+project relies on are listed in THIRD-PARTY-LICENSES.md.
+
+--------------------------------------------------------------------------------
+Apache License, Version 2.0 -- required attribution
+--------------------------------------------------------------------------------
+
+This product includes the following crates that are offered under the Apache License,
+Version 2.0 with no MIT alternative:
+
+    ring 0.17 -- https://github.com/briansmith/ring
+    Licensed under Apache-2.0 AND ISC. ring includes code derived from BoringSSL and
+    OpenSSL; see the ring repository for its complete notices.
+
+    zopfli 0.8 -- https://github.com/zopfli-rs/zopfli
+    Licensed under the Apache License, Version 2.0
+
+The full text of the Apache License, Version 2.0 is in licenses/Apache-2.0.txt.
+
+Where a dependency offers a choice of licences, this project takes the MIT option; see
+THIRD-PARTY-LICENSES.md for the election crate by crate.
+
+--------------------------------------------------------------------------------
+Mozilla CA certificate data
+--------------------------------------------------------------------------------
+
+The TLS client trusts the root certificates published by Mozilla, bundled by the
+webpki-roots crate under the Community Data License Agreement - Permissive, Version 2.0
+(licenses/CDLA-Permissive-2.0.txt).
+
+--------------------------------------------------------------------------------
+Vulnerability data
+--------------------------------------------------------------------------------
+
+opencraysec downloads public vulnerability data at run time (OSV and the advisory databases
+it aggregates, the CISA Known Exploited Vulnerabilities catalog, FIRST EPSS scores, the
+MITRE CWE catalog and NVD records). That data is not part of this software and stays under
+the terms of its publishers; see docs/DATA-SOURCES.md.

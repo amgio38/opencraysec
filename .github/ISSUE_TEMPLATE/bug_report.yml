@@ -1,0 +1,87 @@
+name: Bug report
+description: Something does not work as documented
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. A good report lets us reproduce the problem.
+        **Do not paste secrets or private vulnerability details.** Review logs and reports for
+        tokens, passwords, private paths and unpublished vulnerabilities first.
+        For a security problem in opencraysec itself, use the private report link on the issue chooser instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `opencraysec --version`.
+      placeholder: "opencraysec 0.20261020.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - install.sh (prebuilt binary)
+        - install.sh (built from source)
+        - make install from a checkout
+        - cargo build / other
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and CPU
+      description: For example "Ubuntu 24.04 x86_64", "macOS 15 arm64", "Windows 11 + WSL2 Ubuntu".
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did it happen?
+      options:
+        - CLI (scan, update, explain, plan-fix, verify-fix, scan-code)
+        - MCP server (an AI assistant called a tool)
+        - Dashboard / HTML report
+        - Installer
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: AI client (for MCP problems)
+      description: Which tool launches `opencraysec mcp`, and its version (Claude Code, Cursor, opencode, ...).
+  - type: input
+    id: ecosystem
+    attributes:
+      label: Ecosystem and lockfile involved
+      description: For example `npm / package-lock.json`, `crates.io / Cargo.lock`, `Go / go.mod`.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include the exact command or tool call and the full output.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The smallest lockfile or project and the shortest command that shows the problem.
+      placeholder: |
+        1. ...
+        2. ...
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Output of `opencraysec status`. A wrong or missing finding is easiest to debug with the advisory id and the package version involved.
+      render: text
