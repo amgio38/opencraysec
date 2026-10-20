@@ -5,6 +5,21 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ## [Unreleased]
 
+## [0.20261021.1] - 2026-10-21
+
+Documentation only; no behaviour changed.
+
+- `docs/INSTALL.md`: the Windows row had been cut out of the platform table by the macOS note above it
+  and rendered as stray text after the table. It is back inside the table, and that note now follows it.
+- `README.md`: the bundled Agent Skill also shows the project-local install (a skills directory inside
+  the repository) next to the user-level one that applies it to every project.
+- `README.md`, `docs/ARCHITECTURE.md`: `verify_fix` no longer reads as proof that an advisory is gone. An
+  id is `resolved` only when an earlier scan of the same path reported it; an id no earlier scan
+  reported is `unknown`, and that proves nothing.
+- `README.md`: `scan --fail-on` documents exit 3, for the case where a pass would prove nothing.
+- `README.md`: a release badge, and a line saying which releases carry the prebuilt binaries and the
+  `.sha256` file beside each.
+
 ## [0.20261020.1] - 2026-10-20
 
 First public release.
