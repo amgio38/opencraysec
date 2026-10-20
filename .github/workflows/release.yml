@@ -1,0 +1,213 @@
+name: release
+
+# Pushing a tag such as v0.20261020.1 builds opencraysec as a static musl binary for Linux x86-64
+# and Linux aarch64, and as a native binary for macOS on Apple Silicon and on Intel, and attaches
+# each (plus a checksum) to the matching GitHub Release. The only credential used is the built-in
+# GITHUB_TOKEN.
+#
+# Each target builds on a runner of its own architecture, so the binary that gets published is
+# also run once (`--version`) before it is uploaded. Nothing is published unless all four builds
+# succeed: the release is created by a separate job that needs the build job, so a failure on one
+# target does not leave a release that is missing it.
+#
+# The macOS binaries are not statically linked (macOS has no static libc); the check instead is
+# that they depend on nothing outside the system's own /usr/lib and /System. They are not
+# notarized. Downloaded with curl (as install.sh does) they run as they are; a copy downloaded
+# in a browser carries the quarantine flag and Gatekeeper asks the user to allow it.
+#
+# Each archive is the program plus the licence files under share/doc/opencraysec, so installing
+# from a release asset leaves a prefix that carries its own licences. See scripts/doc-files.sh for
+# the set.
+#
+# Run it by hand (Actions -> release -> Run workflow) to rehearse: the same builds and checks run
+# and the archives are kept as workflow artifacts, but nothing is published.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # A tag that disagrees with the crate version is refused before anything is built: the published
+  # archives would carry one version and the tag name another.
+  verify-tag:
+    name: tag matches the workspace version
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compare the tag with Cargo.toml
+        run: |
+          set -eu
+          version=$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' Cargo.toml | head -1)
+          [ -n "$version" ] || { echo "::error::no [workspace.package] version in Cargo.toml"; exit 1; }
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match the crate version v$version"
+            exit 1
+          fi
+          grep -q "^## \[$version\]" CHANGELOG.md \
+            || { echo "::error::CHANGELOG.md has no section for $version"; exit 1; }
+
+  build:
+    name: binary (${{ matrix.target }})
+    needs: verify-tag
+    # verify-tag is skipped on a manual rehearsal; the build must still run then.
+    if: ${{ !cancelled() && (needs.verify-tag.result == 'success' || needs.verify-tag.result == 'skipped') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+          # Apple Silicon. macos-15 is arm64; the label is pinned (not macos-latest) so a new
+          # image cannot change the SDK under a release.
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          # Intel. GitHub has announced that macos-15-intel is its last x86_64 image
+          # (supported until 2027); when it goes, build this target on arm64 with
+          # `--target x86_64-apple-darwin` and drop the --version run for it.
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+    env:
+      TARGET: ${{ matrix.target }}
+      # The oldest macOS the binary is built to run on; ignored on Linux.
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      ASSET: opencraysec-${{ matrix.target }}.tar.gz
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust with the target
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: ${{ matrix.target }}
+
+      # The TLS stack compiles a little C and assembly; a musl C compiler is needed for that.
+      # macOS runners ship the Xcode toolchain.
+      - name: Install the musl C toolchain
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build the binary
+        run: cargo build --release --locked --target "$TARGET" -p opencraysec-cli
+
+      - name: Package and checksum
+        run: |
+          set -eu
+          mkdir -p dist
+          cp "target/$TARGET/release/opencraysec" dist/opencraysec
+          file dist/opencraysec
+          case "$TARGET" in
+            *-apple-darwin)
+              # No static libc on macOS. What a release binary must not do is depend on anything
+              # the user would have to install: every library it loads has to be the system's.
+              otool -L dist/opencraysec
+              outside=$(otool -L dist/opencraysec | tail -n +2 | awk '{print $1}' | grep -Ev '^(/usr/lib/|/System/)' || true)
+              [ -z "$outside" ] || { echo "::error::dist/opencraysec loads libraries outside the system: $outside"; exit 1; }
+              file dist/opencraysec | grep -q 'Mach-O 64-bit executable' \
+                || { echo "::error::dist/opencraysec is not a Mach-O executable"; exit 1; }
+              # An arm64 binary must be signed to run at all (the linker adds an ad-hoc signature).
+              if [ "$TARGET" = aarch64-apple-darwin ]; then
+                codesign --verify --verbose dist/opencraysec
+              fi ;;
+            *)
+              # A release binary must not depend on the libc of the machine that runs it; that is
+              # the point of the musl target.
+              file dist/opencraysec | grep -Eq 'statically linked|static-pie linked' \
+                || { echo "::error::dist/opencraysec is not statically linked"; exit 1; } ;;
+          esac
+          # The runner has this architecture, so the binary can be run once before anybody
+          # downloads it.
+          dist/opencraysec --version
+          # The licence files ride along in the archive so that a copy of the binary can answer
+          # for itself: the licences of what is bundled in it have to travel with every
+          # redistribution. The set comes from scripts/doc-files.sh, the same list `make install`
+          # and the license check use, so an archive cannot ship a different set from the one the
+          # repository declares. install.sh extracts exactly $OPENCRAYSEC_DOC_SUBDIR from the
+          # archive and refuses anything else in it.
+          . scripts/doc-files.sh
+          for f in $OPENCRAYSEC_DOC_FILES; do
+            test -f "$f" || { echo "::error::$f is listed in scripts/doc-files.sh but not in this checkout"; exit 1; }
+            # `install -D` is GNU only; this also runs on macOS.
+            mkdir -p "dist/$OPENCRAYSEC_DOC_SUBDIR/$(dirname "$f")"
+            install -m 0644 "$f" "dist/$OPENCRAYSEC_DOC_SUBDIR/$f"
+          done
+          # bsdtar on macOS adds `._name` AppleDouble members for files that carry extended
+          # attributes unless COPYFILE_DISABLE is set; install.sh refuses such a member, so one
+          # stray entry would make the release impossible to install. The variable is harmless on
+          # Linux. The check below fails the build if any member is outside what install.sh accepts.
+          COPYFILE_DISABLE=1 tar -czf "$ASSET" -C dist opencraysec "$OPENCRAYSEC_DOC_SUBDIR"
+          echo "archive members:"
+          tar -tzf "$ASSET"
+          sh scripts/check-release-archive.sh "$ASSET"
+          # macOS has no sha256sum; both tools write the same "<hash>  <file>" line.
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$ASSET" > "$ASSET.sha256"
+          else
+            shasum -a 256 "$ASSET" > "$ASSET.sha256"
+          fi
+          cat "$ASSET.sha256"
+
+      - name: Keep the archive for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish the release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Fetch every archive
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: assets
+
+      - name: Publish the release
+        run: |
+          set -eu
+          ls -l assets
+          # Every target, or nothing: a release that quietly lacks one would send that platform's
+          # users to a slow source build.
+          for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl aarch64-apple-darwin x86_64-apple-darwin; do
+            for f in "assets/opencraysec-$t.tar.gz" "assets/opencraysec-$t.tar.gz.sha256"; do
+              test -s "$f" || { echo "::error::$f is missing"; exit 1; }
+            done
+          done
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi
+          gh release upload "$GITHUB_REF_NAME" assets/* --clobber
