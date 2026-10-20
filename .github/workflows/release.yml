@@ -166,7 +166,7 @@ jobs:
           cat "$ASSET.sha256"
 
       - name: Keep the archive for the publish job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target }}
           path: |
@@ -188,7 +188,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - name: Fetch every archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           merge-multiple: true
