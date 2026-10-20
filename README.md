@@ -3,6 +3,7 @@
 [![ci](https://github.com/amgio38/opencraysec/actions/workflows/ci.yml/badge.svg)](https://github.com/amgio38/opencraysec/actions/workflows/ci.yml)
 [![audit](https://github.com/amgio38/opencraysec/actions/workflows/audit.yml/badge.svg)](https://github.com/amgio38/opencraysec/actions/workflows/audit.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![release](https://img.shields.io/github/v/release/amgio38/opencraysec)](https://github.com/amgio38/opencraysec/releases/latest)
 
 A model's training data is months old. Advisories are published every day. `opencraysec` gives your
 AI assistant (or you, on the command line) a fast way to check a project's dependencies against
@@ -62,6 +63,8 @@ claude mcp add opencraysec -- opencraysec mcp
 | macOS, Apple Silicon and Intel | The same command downloads a prebuilt native binary and checks its SHA-256. No Rust or Xcode needed. |
 | Other Linux CPUs | The same command builds from source (Rust 1.95+ and a C compiler). |
 | Windows | Run it inside **WSL2** (below). The installer refuses native Windows shells. |
+
+A prebuilt binary for every supported platform is attached to each [release](https://github.com/amgio38/opencraysec/releases), with a `.sha256` file beside it; [docs/INSTALL.md](docs/INSTALL.md) shows how to verify a download by hand.
 
 The first line installs `opencraysec` into `~/.local/bin`. Other clients (Cursor, opencode, Codex),
 system-wide installs and uninstalling are in [docs/INSTALL.md](docs/INSTALL.md) and
