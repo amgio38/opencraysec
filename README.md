@@ -23,8 +23,10 @@ your machine.
 - **Ranked, not just listed**: exploited in the wild first, then likely to be exploited, then CVSS.
 - **Is it actually used?** Usage evidence per finding from your own source: for Rust and Go down to the
   affected function. Findings your code does not import sink in the ranking (never hidden).
-- **Fix, verify, record**: `plan_fix` gives the exact upgrade commands, `verify_fix` re-scans and proves
-  the advisory is gone, `record_fix` logs what was changed and why, like a commit message.
+- **Fix, verify, record**: `plan_fix` gives the exact upgrade commands, `verify_fix` re-scans and tells you
+  which advisories are gone, `record_fix` logs what was changed and why, like a commit message. An id is
+  `resolved` only when an earlier scan of the same path reported it; an id no earlier scan reported is
+  `unknown`, and that proves nothing.
 - **Your own code too**: `scan-code` flags suspected hard-coded secrets, injection patterns, disabled TLS
   verification and unsafe deserialization, each with a CWE, and can run gitleaks or semgrep.
 - **A report people can read**: a read-only dashboard with charts, the vulnerability list and the history
@@ -66,7 +68,12 @@ system-wide installs and uninstalling are in [docs/INSTALL.md](docs/INSTALL.md) 
 [docs/CLIENTS.md](docs/CLIENTS.md).
 
 To teach the assistant the workflow, install the bundled
-[Agent Skill](skills/opencraysec/SKILL.md): `cp -r skills/opencraysec ~/.claude/skills/`.
+[Agent Skill](skills/opencraysec/SKILL.md): copy it once for every project, or into this project only.
+
+```sh
+cp -r skills/opencraysec ~/.claude/skills/   # every project
+cp -r skills/opencraysec .claude/skills/     # this project only
+```
 
 ### Windows (WSL2)
 
@@ -91,11 +98,11 @@ tools report match what the agent sees.
 ```sh
 opencraysec scan .                       # human-readable report, most urgent first
 opencraysec scan . --format sarif -o out.sarif      # also: json, cyclonedx (SBOM)
-opencraysec scan . --fail-on high        # exit 1 in CI if anything is high or worse
+opencraysec scan . --fail-on high        # exit 1 in CI if anything is high or worse, 3 if nothing was checked
 opencraysec scan . --enrich-nvd          # score findings the advisories left unscored
 opencraysec explain GHSA-xxxx-xxxx-xxxx  # what it is, how bad, references
 opencraysec plan-fix .                   # the upgrade commands; nothing is modified
-opencraysec verify-fix . --id GHSA-xxxx-xxxx-xxxx   # re-scan and prove it is gone
+opencraysec verify-fix . --id GHSA-xxxx-xxxx-xxxx   # re-scan; "resolved" needs an earlier scan of this path
 opencraysec record-fix . --id GHSA-xxxx-xxxx-xxxx --summary "Upgrade lodash" --reason "Prototype pollution"
 opencraysec scan-code .                  # suspected weaknesses in your own source
 opencraysec dashboard                    # the report on http://localhost:1787
@@ -106,6 +113,13 @@ opencraysec status                       # what data is stored, and how old
 `scan` works without downloading anything: for an ecosystem with no local data it asks the OSV API about
 the exact package names and versions it found (never your code) and says so in the report. `--offline`
 forbids that. Run `update` once for fully offline scans.
+
+`scan --fail-on` exits 1 when it found something at or above the threshold, and 3 when a pass would prove
+nothing: no lockfile, an unreadable lockfile, an ecosystem with no advisory data, or only requirement lines
+without an exact `==` pin. Requirement lines listed next to dependencies that were checked do not fail the
+gate; the report then says it is incomplete. `verify-fix` exits 1 when a finding remains, an id is
+`unknown`, or the result could not be trusted. The full table is in
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md#exit-codes).
 
 ## MCP server
 

@@ -14,12 +14,12 @@ curl -fsSL https://raw.githubusercontent.com/amgio38/opencraysec/main/scripts/in
 | Linux x86-64, aarch64 | Downloads a prebuilt static binary from the newest GitHub Release. No Rust needed. |
 | macOS, Apple Silicon (arm64) and Intel (x86-64) | Downloads a prebuilt native binary from the newest GitHub Release. No Rust or Xcode needed. A shell running under Rosetta on an Apple Silicon Mac still gets the arm64 binary. |
 | Other Linux CPUs | Builds from source with cargo (Rust 1.95 or newer and a C compiler). |
+| Windows | Run the installer inside **WSL2** (`wsl --install -d Ubuntu`, then open Ubuntu). The installer refuses to run in native Windows shells. |
 
 The macOS binaries are built for macOS 11 or newer and are not notarized. The installer downloads
 them with `curl`, which does not mark them as quarantined, so they run as they are. A binary you
 download from a browser instead carries the quarantine flag, and Gatekeeper asks you to allow it
 (or run `xattr -d com.apple.quarantine opencraysec`).
-| Windows | Run the installer inside **WSL2** (`wsl --install -d Ubuntu`, then open Ubuntu). The installer refuses to run in native Windows shells. |
 
 CI builds and tests the workspace on Linux and macOS, and on native Windows as an experiment (a
 failure there is reported but does not block a merge). Until Windows is green and verified, WSL2 is

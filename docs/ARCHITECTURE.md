@@ -29,7 +29,9 @@ lockfiles ──► lockfile::discover ──► Vec<Package>
 - **Only the range holding the installed version names a fix.** Other ranges describe other release
   branches.
 - **Never edits the project.** `plan_fix` returns commands; `verify_fix` re-scans and reports whether the
-  result can be trusted (`trustworthy` is false if any ecosystem was not scanned).
+  result can be trusted (`trustworthy` is false if any ecosystem was not scanned). An id is `resolved`
+  only when an earlier scan of the same path logged it: an id no earlier scan reported is `unknown`, so a
+  typo or an advisory that never applied cannot pass for a fixed one.
 - **Ranking.** Known-exploited, then EPSS of 10% or more, then CVSS, then raw EPSS. Tiny EPSS differences
   are noise and never outrank a higher CVSS.
 
