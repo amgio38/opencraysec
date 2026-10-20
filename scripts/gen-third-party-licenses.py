@@ -30,9 +30,14 @@ TEXT_DIR = ROOT / "licenses"
 
 
 def metadata():
-    out = subprocess.check_output(
-        ["cargo", "metadata", "--format-version", "1", "--locked", "--offline"],
-        cwd=ROOT, stderr=subprocess.DEVNULL)
+    # Offline first: a developer machine already has every crate. A fresh machine (a CI runner)
+    # has not downloaded anything yet, so `--offline` cannot resolve the graph there; retry online.
+    # `--locked` in both cases, so the result is always what Cargo.lock says.
+    base = ["cargo", "metadata", "--format-version", "1", "--locked"]
+    try:
+        out = subprocess.check_output(base + ["--offline"], cwd=ROOT, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        out = subprocess.check_output(base, cwd=ROOT, stderr=subprocess.DEVNULL)
     return json.loads(out)
 
 

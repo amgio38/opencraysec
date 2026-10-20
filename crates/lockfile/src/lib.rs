@@ -132,11 +132,7 @@ pub fn discover(root: &Path, only: Option<&[Ecosystem]>) -> Discovery {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         let Some(kind) = kind_of(&name) else { continue };
-        let rel = path
-            .strip_prefix(base)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .into_owned();
+        let rel = relative_name(&path, base);
         if kind == "gosum" && path.with_file_name("go.mod").is_file() {
             continue;
         }
@@ -194,6 +190,17 @@ pub fn discover(root: &Path, only: Option<&[Ecosystem]>) -> Discovery {
         }
     }
     d
+}
+
+/// `path` relative to `base`, written with `/` on every platform, so a file is called the same
+/// thing in a report whether the scan ran on Linux, macOS or Windows.
+pub fn relative_name(path: &Path, base: &Path) -> String {
+    path.strip_prefix(base)
+        .unwrap_or(path)
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// Where an `-r` target points, relative to the scan root and written the way [`discover`] names
@@ -374,5 +381,17 @@ mod tests {
         assert_eq!(resolve_include("b.txt", "../c.txt"), None);
         assert_eq!(resolve_include("b.txt", "/abs.txt"), None);
         assert_eq!(resolve_include("b.txt", "https://x/c.txt"), None);
+    }
+
+    #[test]
+    fn relative_names_use_forward_slashes() {
+        let base = Path::new("root");
+        assert_eq!(
+            relative_name(&base.join("a").join("b.txt"), base),
+            "a/b.txt"
+        );
+        assert_eq!(relative_name(&base.join("b.txt"), base), "b.txt");
+        // Outside the base it stays as given, still `/`-separated.
+        assert_eq!(relative_name(&Path::new("x").join("y"), base), "x/y");
     }
 }

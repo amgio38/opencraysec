@@ -96,11 +96,7 @@ fn walk(dir: &Path, base: &Path, depth: usize, out: &mut Tree) {
                 continue;
             }
             if let Ok(text) = fs::read_to_string(&path) {
-                let rel = path
-                    .strip_prefix(base)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .into_owned();
+                let rel = opencraysec_lockfile::relative_name(&path, base);
                 out.files.push(SrcFile { rel, lang, text });
             }
         }
