@@ -20,9 +20,13 @@ Cargo.
 Dependencies point one way, from the shells down to the leaf:
 
 ```
-core <- lockfile, db <- engine <- log <- web
+core <- lockfile
+core, runtime <- db
+core, lockfile, db, runtime <- engine <- log <- web
 core, db, engine, log <- mcp
 everything <- cli
+
+runtime has no workspace dependencies of its own (a leaf, like core) and does no networking.
 ```
 
 A crate may depend only on the workspace crates below it, in any dependency section. A dependency must

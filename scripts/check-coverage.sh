@@ -17,7 +17,7 @@ cargo llvm-cov --workspace --all-targets \
 python3 - "$json" <<'PY'
 import json, sys, collections
 FLOOR = 90
-crates = ["core", "lockfile", "db", "engine", "log", "web", "mcp", "cli"]
+crates = ["core", "runtime", "lockfile", "db", "engine", "log", "web", "mcp", "cli"]
 data = json.load(open(sys.argv[1]))["data"][0]["files"]
 tot = collections.defaultdict(lambda: [0, 0])
 bad = False
