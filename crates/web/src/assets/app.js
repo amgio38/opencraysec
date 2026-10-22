@@ -57,6 +57,7 @@
     box.appendChild(kpi('Confirmed fixed', k.resolved_verified, 'verified by a re-scan', 'good'));
     box.appendChild(kpi('Changes recorded', k.recorded_fixes, 'reported by the AI'));
     box.appendChild(kpi('Suspected code issues', k.code_suspected, 'to be confirmed'));
+    box.appendChild(kpi('Runtime products to review', k.runtime_scans ? k.runtime_attention : '-', k.runtime_scans ? (k.runtime_cves + ' CVE(s) listed by NVD') : 'run scan-runtime', k.runtime_attention ? 'bad' : ''));
     box.appendChild(kpi('Scans', k.scans, 'last: ' + when(k.last_scan)));
   }
 
@@ -297,6 +298,53 @@
     });
   }
 
+  var RUNTIME_BADGE = { eol: 'high', outdated: 'medium', current: 'low', unknown: 'unknown' };
+
+  function renderRuntime(s) {
+    var thead = document.querySelector('#runtime thead'), tbody = document.querySelector('#runtime tbody');
+    var notes = $('runtime-notes');
+    clear(thead); clear(tbody); clear(notes);
+    var rt = s.runtime;
+    var tr = h('tr');
+    ['Status', 'Product', 'Release line', 'Newest patch', 'CVEs (NVD)', 'What to do'].forEach(function (t) { tr.appendChild(h('th', { text: t })); });
+    thead.appendChild(tr);
+    if (!rt || !(rt.results || []).length) {
+      tbody.appendChild(h('tr', null, h('td', { colspan: '6', class: 'empty', text: rt ? 'The last runtime scan judged nothing (see the notes below).' : 'No runtime scan has been run yet (opencraysec scan-runtime, or the MCP tool scan_runtime).' })));
+    } else {
+      rt.results.forEach(function (r) {
+        var cves;
+        if (!r.nvd) {
+          cves = h('td', { class: 'sub', text: 'not asked (--nvd)' });
+        } else if (r.nvd.error) {
+          cves = h('td', { class: 'sub', text: 'NVD: ' + r.nvd.error });
+        } else if (!(r.nvd.cves || []).length) {
+          cves = h('td', { text: 'none listed for this version' });
+        } else {
+          cves = h('td', null);
+          r.nvd.cves.slice(0, 6).forEach(function (c) {
+            cves.appendChild(h('div', { class: 'cve' },
+              h('span', { class: 'mono', text: c.id }),
+              h('span', { text: '  ' + (c.cvss == null ? '' : 'CVSS ' + c.cvss.toFixed(1)) + (c.known_exploited ? '  exploited' : '') }),
+              h('div', { class: 'sub', text: (c.affects || []).join('; ') })));
+          });
+          if (r.nvd.cves.length > 6) cves.appendChild(h('div', { class: 'sub', text: '... and ' + (r.nvd.cves.length - 6) + ' more' }));
+        }
+        tbody.appendChild(h('tr', null,
+          h('td', null, h('span', { class: 'badge ' + (RUNTIME_BADGE[r.status] || 'unknown'), text: r.status })),
+          h('td', null, h('div', { text: r.product + ' ' + r.version }), h('div', { class: 'sub mono', text: r.source }), r.scanned ? h('div', { class: 'sub', text: 'scanned ' + when(r.scanned) }) : null),
+          h('td', null, h('div', { text: r.cycle || '-' }), r.eol_from ? h('div', { class: 'sub', text: 'end of life ' + r.eol_from }) : null),
+          h('td', { class: 'mono', text: r.latest || '-' }),
+          cves,
+          h('td', { text: r.advice || '' })));
+      });
+    }
+    if (rt) {
+      (rt.notes || []).forEach(function (n) { notes.appendChild(h('div', { class: 'sub', text: n })); });
+      var d = rt.data || {};
+      notes.appendChild(h('div', { class: 'sub', text: 'Scanned ' + when(rt.ts) + ' · end-of-life data ' + (d.lifecycle_updated_at || 'not downloaded') }));
+    }
+  }
+
   function renderMeta(s) {
     $('subtitle').textContent = s.workspace + ' · ' + s.kpis.scans + ' scans · last scan ' + when(s.kpis.last_scan);
     var notes = $('notes');
@@ -315,7 +363,7 @@
       $('kpis').appendChild(h('div', { class: 'empty card', text: 'The log is empty. Run a scan (opencraysec scan, or the MCP tool scan_dependencies) and reload.' }));
       return;
     }
-    renderMeta(s); renderKpis(s); renderCharts(s); renderFixes(s); renderFindings(s); renderCode(s);
+    renderMeta(s); renderKpis(s); renderCharts(s); renderFixes(s); renderFindings(s); renderRuntime(s); renderCode(s);
   }
 
   function fillWorkspaces(s, onChange) {

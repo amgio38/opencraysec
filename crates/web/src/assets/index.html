@@ -48,6 +48,13 @@
   </section>
 
   <section class="block">
+    <h2>Runtime products (PHP, nginx, ...)</h2>
+    <div class="desc">What the application runs on, from the latest <span class="mono">scan-runtime</span>: whether the release line is still supported and on its newest patch, and, when NVD was asked, the CVEs it lists for that exact version. Release lines, not a scan of libraries.</div>
+    <div class="tablewrap"><table id="runtime"><thead></thead><tbody></tbody></table></div>
+    <div id="runtime-notes"></div>
+  </section>
+
+  <section class="block">
     <h2>Suspected issues in your own code</h2>
     <div class="desc">Pattern matches from the built-in rules (and gitleaks/semgrep when requested). These are leads to confirm, not proven vulnerabilities.</div>
     <div class="tablewrap"><table id="code"><thead></thead><tbody></tbody></table></div>

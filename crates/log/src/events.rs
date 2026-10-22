@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use opencraysec_core::{Finding, Severity};
-use opencraysec_engine::{CodeReport, FixPlan, ScanReport, VerifyOutcome};
+use opencraysec_engine::{CodeReport, FixPlan, RuntimeReport, ScanReport, VerifyOutcome};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -130,6 +130,66 @@ pub fn code_event(r: &CodeReport, client: Option<&str>) -> Event {
             "by_severity": severity_counts(r.findings.iter().map(|f| &f.severity)),
             "external": r.external,
             "findings": findings,
+        }),
+    )
+}
+
+fn status_of(s: impl Serialize) -> String {
+    serde_json::to_value(s)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// The event for a runtime scan: what each product was judged to be and, when NVD was asked, the
+/// CVEs it listed. `workspace` is the project the runtime belongs to (the runtime itself is not a path).
+pub fn runtime_event(workspace: &str, r: &RuntimeReport, client: Option<&str>) -> Event {
+    let results: Vec<Value> = r
+        .results
+        .iter()
+        .take(MAX_LIST)
+        .map(|x| {
+            let nvd = x.nvd.as_ref().map(|n| {
+                // The struct's own serialization, so scores print the same here as in `--format json`.
+                let cves: Vec<Value> = n
+                    .cves
+                    .iter()
+                    .take(MAX_LIST)
+                    .filter_map(|c| serde_json::to_value(c).ok())
+                    .collect();
+                json!({
+                    "cves": cves, "total": n.cves.len(),
+                    "all_versions_omitted": n.all_versions_omitted,
+                    "truncated": n.truncated, "error": n.error,
+                })
+            });
+            json!({
+                "product": x.product, "version": x.version, "source": x.source,
+                "status": status_of(x.status), "cycle": x.cycle, "eol_from": x.eol_from,
+                "latest": x.latest, "patches_behind": x.patches_behind,
+                "advice": x.advice, "nvd": nvd,
+            })
+        })
+        .collect();
+    let count = |s: &str| {
+        r.results
+            .iter()
+            .filter(|x| status_of(x.status) == s)
+            .count()
+    };
+    Event::new(
+        "scan_runtime",
+        workspace,
+        client,
+        json!({
+            "total": r.results.len(),
+            "by_status": {
+                "eol": count("eol"), "outdated": count("outdated"),
+                "current": count("current"), "unknown": count("unknown"),
+            },
+            "data": r.data,
+            "notes": r.notes.iter().take(MAX_LIST).map(|n| n.chars().take(MAX_TEXT).collect::<String>()).collect::<Vec<_>>(),
+            "results": results,
         }),
     )
 }
@@ -322,7 +382,104 @@ pub fn record_fix(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use opencraysec_engine::{
+        DataInfo, NvdOutcome, ProductResult, RuntimeCve, RuntimeReport, RuntimeStatus,
+    };
     use std::fs;
+
+    fn runtime_result(
+        product: &str,
+        version: &str,
+        status: RuntimeStatus,
+        nvd: Option<NvdOutcome>,
+    ) -> ProductResult {
+        ProductResult {
+            product: product.into(),
+            version: version.into(),
+            source: "given".into(),
+            status,
+            cycle: Some("7.4".into()),
+            eol_from: Some("2022-11-28".into()),
+            latest: Some("7.4.33".into()),
+            patches_behind: None,
+            advice: "move to a supported line".into(),
+            nvd,
+        }
+    }
+
+    #[test]
+    fn a_runtime_scan_event_keeps_the_verdicts_and_the_cves() {
+        let cve = RuntimeCve {
+            id: "CVE-2026-109618".into(),
+            published: Some("2026-10-21".into()),
+            summary: "PHP uses longjmp()".into(),
+            cvss: Some(9.8),
+            cwes: vec!["CWE-416".into()],
+            affects: vec!["v < 8.2.35".into()],
+            known_exploited: true,
+            epss: Some(0.4),
+        };
+        let report = RuntimeReport {
+            scanned_at: "2026-10-22T07:00:00Z".into(),
+            data: DataInfo {
+                lifecycle_updated_at: Some("2026-10-22T06:00:00Z".into()),
+                vendor_updated_at: vec![],
+            },
+            results: vec![
+                runtime_result(
+                    "php",
+                    "7.4.33",
+                    RuntimeStatus::Eol,
+                    Some(NvdOutcome {
+                        cves: vec![cve],
+                        all_versions_omitted: 1,
+                        truncated: false,
+                        error: None,
+                    }),
+                ),
+                runtime_result("nginx", "1.28.0", RuntimeStatus::Current, None),
+                runtime_result(
+                    "redis",
+                    "7.0.0",
+                    RuntimeStatus::Unknown,
+                    Some(NvdOutcome::failed("rate limited")),
+                ),
+            ],
+            notes: vec!["a note".into()],
+        };
+        let ev = runtime_event("/proj", &report, Some("cli"));
+        assert_eq!(
+            (ev.kind.as_str(), ev.workspace.as_str()),
+            ("scan_runtime", "/proj")
+        );
+        assert_eq!(ev.client.as_deref(), Some("cli"));
+        let d = &ev.data;
+        assert_eq!(d["total"], 3);
+        assert_eq!(
+            d["by_status"],
+            json!({"eol": 1, "outdated": 0, "current": 1, "unknown": 1})
+        );
+        assert_eq!(d["data"]["lifecycle_updated_at"], "2026-10-22T06:00:00Z");
+        assert_eq!(d["notes"][0], "a note");
+        let php = &d["results"][0];
+        assert_eq!(
+            (&php["product"], &php["status"]),
+            (&json!("php"), &json!("eol"))
+        );
+        assert_eq!(php["nvd"]["total"], 1);
+        assert_eq!(php["nvd"]["all_versions_omitted"], 1);
+        let c = &php["nvd"]["cves"][0];
+        assert_eq!(
+            (&c["id"], &c["cvss"], &c["known_exploited"]),
+            (&json!("CVE-2026-109618"), &json!(9.8), &json!(true))
+        );
+        assert_eq!(c["affects"][0], "v < 8.2.35");
+        assert!(
+            d["results"][1]["nvd"].is_null(),
+            "NVD was not asked for nginx"
+        );
+        assert_eq!(d["results"][2]["nvd"]["error"], "rate limited");
+    }
 
     fn lock(version: &str) -> String {
         format!(

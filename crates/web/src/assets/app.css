@@ -79,6 +79,7 @@ tr:last-child td { border-bottom: 0; }
 .tag { display: inline-block; border: 1px solid var(--line); background: var(--panel-2); border-radius: 6px; padding: 0 6px; font-size: 11px; margin-right: 4px; color: var(--muted); }
 .tag.hot { border-color: var(--critical); color: var(--critical); font-weight: 600; }
 .tag.good { border-color: var(--ok); color: var(--ok); }
+.cve { white-space: nowrap; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
 .timeline { display: grid; gap: 12px; }
 .fix { border-left: 4px solid var(--brand); }

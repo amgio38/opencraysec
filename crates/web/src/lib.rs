@@ -334,6 +334,18 @@ mod tests {
     }
 
     #[test]
+    fn the_page_has_a_runtime_panel_and_the_script_fills_it() {
+        let page = include_str!("assets/index.html");
+        let script = include_str!("assets/app.js");
+        assert!(page.contains("id=\"runtime\"") && page.contains("id=\"runtime-notes\""));
+        assert!(
+            script.contains("function renderRuntime(s)") && script.contains("renderRuntime(s);"),
+            "the panel is rendered with the rest of the page"
+        );
+        assert!(script.contains("s.runtime") && script.contains("runtime_attention"));
+    }
+
+    #[test]
     fn serves_pages_assets_and_api() {
         let dir = tempfile::tempdir().expect("tmp");
         let cfg = cfg_with_data(dir.path(), None);

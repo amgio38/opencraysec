@@ -161,8 +161,9 @@ run, and `record_fix` writes only to the activity log. Full arguments and result
 ## The dashboard
 
 `opencraysec dashboard` serves a read-only report from the activity log: counts, severity over time, the
-riskiest packages, usage evidence, activity, the vulnerable dependencies, suspected code issues, and the
-history of what was changed and why.
+riskiest packages, usage evidence, activity, the vulnerable dependencies, the runtime products
+(`scan-runtime`) with the CVEs NVD lists for them, suspected code issues, and the history of what was
+changed and why.
 
 **It listens on every network interface by default (`0.0.0.0:1787`) and the report lists your
 vulnerabilities.** Use `--host 127.0.0.1` to keep it on this machine, or `--token SECRET` to require one.
@@ -181,11 +182,11 @@ Details, including what the log holds, are in [docs/DASHBOARD.md](docs/DASHBOARD
 
 ## Privacy
 
-Scanning is local. The only network traffic is downloading public datasets (OSV, CISA, FIRST, MITRE),
-querying `api.osv.dev` with package names and versions when an ecosystem has no local data and you did
-not pass `--offline`, and NVD lookups by CVE id when you pass `--enrich-nvd`. The activity log holds
-package names, versions, advisory ids and file paths, never source code or secrets, and stays on your
-machine. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md#network-use).
+Scanning is local. The only network traffic is downloading public datasets (OSV, CISA, FIRST, MITRE,
+endoflife.date, php.net), querying `api.osv.dev` with package names and versions when an ecosystem has no
+local data and you did not pass `--offline`, and NVD lookups when you pass `--enrich-nvd` (CVE ids) or
+`scan-runtime --nvd` (a product's CPE name and version). The activity log holds package names, versions,
+advisory and CVE ids and file paths, never source code or secrets, and stays on your machine. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md#network-use).
 
 ## Documentation
 

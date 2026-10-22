@@ -14,6 +14,9 @@ pub mod scan;
 pub use code::{CodeFinding, CodeOptions, CodeReport, scan_code};
 pub use explain::{Explanation, explain};
 pub use fix::{FixPlan, FixStep, VerifyOutcome, plan_fix, verify_fix};
+pub use opencraysec_runtime::{
+    DataInfo, NvdOutcome, ProductResult, RuntimeCve, RuntimeReport, Status as RuntimeStatus,
+};
 pub use runtime::{RuntimeOptions, scan_runtime};
 pub use scan::{DataSource, ScanOptions, ScanReport, scan};
 

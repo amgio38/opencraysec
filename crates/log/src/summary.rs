@@ -88,6 +88,59 @@ fn lookup_finding(evs: &[&Event], ts: &str, id: &str) -> Option<Value> {
         })
 }
 
+fn runtime_cves(r: &Value) -> u64 {
+    r.get("nvd")
+        .and_then(|n| n.get("total"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0)
+}
+
+/// The runtime results of every `scan_runtime` event in a project, one per product and version.
+/// The newest verdict wins, but an NVD answer from an earlier scan is kept when the newest one did not
+/// ask NVD, so scanning `php@8.4.26` and then `php@7.4.33` shows both, and a quick re-scan without
+/// `--nvd` does not wipe the CVEs a slower one found. Products needing attention come first.
+fn merged_runtime_results(events: &[&&Event]) -> Vec<Value> {
+    let mut by: BTreeMap<String, Value> = BTreeMap::new();
+    for e in events {
+        for r in array_of(&e.data, "results") {
+            let key = format!("{}@{}", str_of(r, "product"), str_of(r, "version"));
+            let mut r = r.clone();
+            let kept = by
+                .get(&key)
+                .and_then(|old| old.get("nvd"))
+                .filter(|n| !n.is_null())
+                .cloned();
+            if let Some(o) = r.as_object_mut() {
+                if o.get("nvd").is_none_or(Value::is_null)
+                    && let Some(n) = kept
+                {
+                    o.insert("nvd".into(), n);
+                }
+                o.insert("scanned".into(), json!(e.ts));
+            }
+            by.insert(key, r);
+        }
+    }
+    let rank = |r: &Value| match (str_of(r, "status"), runtime_cves(r) > 0) {
+        ("eol", _) => 0,
+        ("outdated", _) => 1,
+        (_, true) => 2,
+        ("unknown", _) => 3,
+        _ => 4,
+    };
+    let mut list: Vec<Value> = by.into_values().collect();
+    list.sort_by_key(rank);
+    list
+}
+
+fn runtime_status_counts(results: &[Value]) -> Value {
+    let count = |s: &str| results.iter().filter(|r| str_of(r, "status") == s).count();
+    json!({
+        "eol": count("eol"), "outdated": count("outdated"),
+        "current": count("current"), "unknown": count("unknown"),
+    })
+}
+
 /// Everything the report needs for one project (or the most recent one when `workspace` is `None`).
 pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
     let all_ws = workspaces(events);
@@ -103,6 +156,16 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
     let scans: Vec<&&Event> = evs.iter().filter(|e| e.kind == "scan").collect();
     let latest_scan = scans.last();
     let latest_code = evs.iter().rev().find(|e| e.kind == "scan_code");
+    let runtime_events: Vec<&&Event> = evs.iter().filter(|e| e.kind == "scan_runtime").collect();
+    let latest_runtime = runtime_events.last();
+    let runtime_scans = runtime_events.len();
+    let runtime_results = merged_runtime_results(&runtime_events);
+    // Products worth a look: past end of life, behind their newest patch, or with CVEs listed.
+    let runtime_attention = runtime_results
+        .iter()
+        .filter(|r| matches!(str_of(r, "status"), "eol" | "outdated") || runtime_cves(r) > 0)
+        .count();
+    let runtime_cve_total: u64 = runtime_results.iter().map(runtime_cves).sum();
 
     let timeline: Vec<Value> = scans
         .iter()
@@ -240,7 +303,7 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
         let d = day(&e.ts).to_string();
         let slot = activity.entry(d).or_default();
         match e.kind.as_str() {
-            "scan" | "scan_code" => slot.0 += 1,
+            "scan" | "scan_code" | "scan_runtime" => slot.0 += 1,
             "record_fix" => slot.1 += 1,
             "verify_fix" => slot.2 += array_of(&e.data, "resolved").len(),
             _ => {}
@@ -283,6 +346,9 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
             "resolved_verified": resolved_ids.len(),
             "recorded_fixes": fixes.iter().filter(|f| str_of(f, "kind") == "recorded").count(),
             "scans": scans.len(),
+            "runtime_scans": runtime_scans,
+            "runtime_attention": runtime_attention,
+            "runtime_cves": runtime_cve_total,
             "code_suspected": latest_code.map_or(0, |e| e.data.get("total").and_then(|x| x.as_u64()).unwrap_or(0)),
             "last_scan": latest_scan.map(|e| e.ts.clone()),
             "packages_checked": latest_scan.map_or(0, |e| e.data.get("packages_checked").and_then(|x| x.as_u64()).unwrap_or(0)),
@@ -301,6 +367,13 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
             "by_severity": e.data.get("by_severity"),
             "external": e.data.get("external"),
             "findings": e.data.get("findings"),
+        })),
+        "runtime": latest_runtime.map(|e| json!({
+            "ts": e.ts,
+            "by_status": runtime_status_counts(&runtime_results),
+            "data": e.data.get("data"),
+            "notes": e.data.get("notes"),
+            "results": runtime_results,
         })),
         "fixes": fixes,
     })
@@ -370,6 +443,111 @@ mod tests {
                 json!({"total": 0, "findings": []}),
             ),
         ]
+    }
+
+    fn runtime_ev(ts: &str, ws: &str, results: Value) -> Event {
+        ev(
+            ts,
+            "scan_runtime",
+            ws,
+            json!({"total": 1, "data": {"lifecycle_updated_at": "d"}, "notes": ["n"], "results": results}),
+        )
+    }
+
+    fn rt(product: &str, version: &str, status: &str, cves: Option<u64>) -> Value {
+        json!({"product": product, "version": version, "status": status, "source": "given",
+               "nvd": cves.map(|n| json!({"total": n, "cves": [], "error": null}))})
+    }
+
+    #[test]
+    fn every_runtime_scan_shows_up_and_the_newest_verdict_wins() {
+        let events = vec![
+            runtime_ev(
+                "2026-10-22T07:00:00Z",
+                "/a",
+                json!([rt("php", "7.4.33", "eol", Some(2))]),
+            ),
+            runtime_ev(
+                "2026-10-22T07:05:00Z",
+                "/a",
+                json!([rt("php", "8.4.27", "current", Some(0))]),
+            ),
+            // A quick re-scan that did not ask NVD must not wipe the CVEs the slower one found.
+            runtime_ev(
+                "2026-10-22T07:10:00Z",
+                "/a",
+                json!([
+                    rt("php", "7.4.33", "eol", None),
+                    rt("nginx", "1.20.0", "outdated", None)
+                ]),
+            ),
+        ];
+        let s = summarize(&events, None);
+        let r = &s["runtime"];
+        let list = r["results"].as_array().expect("results");
+        let names: Vec<String> = list
+            .iter()
+            .map(|x| {
+                format!(
+                    "{}@{}",
+                    x["product"].as_str().unwrap_or(""),
+                    x["version"].as_str().unwrap_or("")
+                )
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec!["php@7.4.33", "nginx@1.20.0", "php@8.4.27"],
+            "both php versions are kept, products needing attention first"
+        );
+        assert_eq!(list[0]["nvd"]["total"], 2, "the earlier NVD answer is kept");
+        assert_eq!(
+            list[0]["scanned"], "2026-10-22T07:10:00Z",
+            "but the verdict is the newest"
+        );
+        assert_eq!(
+            r["by_status"],
+            json!({"eol": 1, "outdated": 1, "current": 1, "unknown": 0})
+        );
+        assert_eq!(r["ts"], "2026-10-22T07:10:00Z");
+        let k = &s["kpis"];
+        assert_eq!(
+            (
+                k["runtime_scans"].as_u64(),
+                k["runtime_attention"].as_u64(),
+                k["runtime_cves"].as_u64()
+            ),
+            (Some(3), Some(2), Some(2))
+        );
+        // A scan of another project is not mixed in, and a project with no runtime scan has none.
+        let other = vec![runtime_ev(
+            "2026-10-22T08:00:00Z",
+            "/b",
+            json!([rt("php", "8.3.0", "outdated", None)]),
+        )];
+        assert_eq!(
+            summarize(&other, Some("/b"))["kpis"]["runtime_attention"],
+            1
+        );
+        assert!(summarize(&sample(), Some("/a"))["runtime"].is_null());
+        assert_eq!(summarize(&sample(), Some("/a"))["kpis"]["runtime_scans"], 0);
+    }
+
+    #[test]
+    fn a_project_with_only_runtime_scans_still_has_a_report() {
+        let events = vec![runtime_ev(
+            "2026-10-22T07:00:00Z",
+            "/only",
+            json!([rt("php", "7.4.33", "eol", None)]),
+        )];
+        let s = summarize(&events, None);
+        assert_eq!(s["empty"], false);
+        assert_eq!(s["workspace"], "/only");
+        assert_eq!(s["kpis"]["scans"], 0);
+        assert_eq!(
+            s["activity"][0]["scans"], 1,
+            "a runtime scan counts as activity"
+        );
     }
 
     #[test]

@@ -103,7 +103,8 @@ Result: `scanned_at`, `data` (when the end-of-life data and each vendor feed wer
 `patches_behind`, `advice`, and with `nvd` an `nvd` object) and `notes`. The `nvd` object has `cves`
 (most urgent first: `id`, `published`, `summary`, `cvss`, `cwes`, `affects`, `known_exploited`, `epss`),
 `all_versions_omitted` (old entries that name every version of the product, counted but not listed),
-`truncated` and `error` (why NVD was not asked or failed). **Read `notes`**: it says what was not looked at and why a
+`truncated` and `error` (why NVD was not asked or failed). Every call is recorded in the activity log
+(kind `scan_runtime`, under the workspace the server was started for), so the dashboard shows it. **Read `notes`**: it says what was not looked at and why a
 distribution's older version number may already be patched.
 
 ## update_db

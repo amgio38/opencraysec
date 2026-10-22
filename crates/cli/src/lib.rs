@@ -14,7 +14,8 @@ use opencraysec_engine::{
 };
 use opencraysec_log::EventLog;
 use opencraysec_log::events::{
-    FixInput, code_event, log_scan, plan_event, record_fix, seen_finding_ids, verify_event,
+    FixInput, code_event, log_scan, plan_event, record_fix, runtime_event, seen_finding_ids,
+    verify_event,
 };
 use opencraysec_runtime::Status as RtStatus;
 
@@ -530,6 +531,16 @@ fn execute(
         } => {
             let r = scan_runtime(&store, &RuntimeOptions { products, nvd })
                 .map_err(|e| e.to_string())?;
+            if let Some(l) = &log {
+                note_log(
+                    l.append(&runtime_event(
+                        &workspace_of(Path::new(".")),
+                        &r,
+                        Some("cli"),
+                    )),
+                    err,
+                );
+            }
             let text = match format {
                 RuntimeFormat::Json => pretty(&r)?,
                 RuntimeFormat::Text => runtime_text(&r),
@@ -1441,6 +1452,36 @@ mod tests {
         ] {
             assert!(out.contains(want), "{want} missing from {out}");
         }
+
+        // Every runtime scan is in the activity log the dashboard reads, with the CVEs NVD listed.
+        let log_path = dir.path().join("log/events.jsonl");
+        let log = std::fs::read_to_string(&log_path).expect("the runtime scans were logged");
+        let runtime_events = |text: &str| {
+            text.lines()
+                .filter(|l| l.contains("\"kind\":\"scan_runtime\""))
+                .count()
+        };
+        assert_eq!(
+            runtime_events(&log),
+            4,
+            "one event per scan-runtime run so far"
+        );
+        assert!(
+            log.contains("CVE-2026-109618") && log.contains("\"cvss\":9.8"),
+            "{log}"
+        );
+        // `--no-log` is the one way to keep a scan out of it.
+        let (code, _, _) = run_it(&[
+            "opencraysec",
+            "--data-dir",
+            d,
+            "--no-log",
+            "scan-runtime",
+            "php@8.4.27",
+        ]);
+        assert_eq!(code, 0);
+        let after = std::fs::read_to_string(&log_path).expect("log");
+        assert_eq!(runtime_events(&after), 4, "--no-log writes nothing");
         let (code, _, err) = run_it(&["opencraysec", "--data-dir", d, "scan-runtime", "nonsense"]);
         assert_eq!(code, EXIT_FAILED, "{err}");
         let (code, out, _) =

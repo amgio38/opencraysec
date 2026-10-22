@@ -10,7 +10,8 @@ use opencraysec_engine::{
 };
 use opencraysec_log::EventLog;
 use opencraysec_log::events::{
-    FixInput, code_event, log_scan, plan_event, record_fix, seen_finding_ids, verify_event,
+    FixInput, code_event, log_scan, plan_event, record_fix, runtime_event, seen_finding_ids,
+    verify_event,
 };
 use serde_json::{Value, json};
 
@@ -272,6 +273,15 @@ pub fn call(cfg: &ServerConfig, name: &str, args: &Value) -> Result<Value, ToolE
                 nvd,
             };
             let report = scan_runtime(&cfg.store, &opts).or_else(|e| fail(e.to_string()))?;
+            let workspace = cfg
+                .workspace
+                .canonicalize()
+                .unwrap_or_else(|_| cfg.workspace.clone())
+                .display()
+                .to_string();
+            logged(cfg, |log, client| {
+                log.append(&runtime_event(&workspace, &report, client))
+            });
             Ok(serde_json::to_value(report).unwrap_or(Value::Null))
         }
         "explain_advisory" => {

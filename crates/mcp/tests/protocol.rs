@@ -485,6 +485,13 @@ fn update_db_stores_datasets_when_the_sources_answer() {
         "no 8.4 line in this mock's end-of-life data"
     );
     assert!(rt["structuredContent"]["data"]["lifecycle_updated_at"].is_string());
+    // The call is in the activity log, so the dashboard shows it.
+    let log = fs::read_to_string(cfg.store.dir().join("log/events.jsonl")).expect("logged");
+    assert!(
+        log.lines()
+            .any(|l| l.contains("\"kind\":\"scan_runtime\"") && l.contains("php")),
+        "{log}"
+    );
     let bad = call(&cfg, "scan_runtime", json!({"products": ["php"]}));
     assert_eq!(bad["isError"], true);
     let nvd = call(
