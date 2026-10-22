@@ -70,7 +70,6 @@ builds and checks all four archives and keeps them as workflow artifacts, but cr
 1. Create the public repository `amgio38/opencraysec`, enable *private vulnerability reporting*
    (Settings, Security) so [SECURITY.md](../SECURITY.md) has a working channel, and enable Dependabot
    alerts.
-2. Turn on branch protection for `main` and require these checks, named exactly as the workflow jobs are: `fmt, clippy, test, checks`, `line coverage (90% per crate and per file)` and `build and test (macos-latest)`. The Windows job is experimental and
-   must not be required until it is green.
+2. Turn on branch protection for `main` and require these checks, named exactly as the workflow jobs are: `fmt, clippy, test, checks`, `line coverage (90% per crate and per file)`, `build and test (macos-latest)` and `build and test (windows-latest)`.
 3. Rehearse the release workflow once by hand (above) and read the archive listing it prints.
 4. Run `bash scripts/release.sh --publish`.

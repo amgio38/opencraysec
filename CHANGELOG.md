@@ -5,6 +5,11 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ## [Unreleased]
 
+### Changed
+
+- The native Windows job in CI is now a required check, like macOS: a failure there fails the workflow and
+  stops `scripts/release.sh` before it tags. Installing on Windows still goes through WSL2.
+
 ## [0.20261022.4] - 2026-10-22
 
 ### Fixed

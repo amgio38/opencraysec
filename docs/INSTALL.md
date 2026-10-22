@@ -21,9 +21,9 @@ them with `curl`, which does not mark them as quarantined, so they run as they a
 download from a browser instead carries the quarantine flag, and Gatekeeper asks you to allow it
 (or run `xattr -d com.apple.quarantine opencraysec`).
 
-CI builds and tests the workspace on Linux and macOS, and on native Windows as an experiment (a
-failure there is reported but does not block a merge). Until Windows is green and verified, WSL2 is
-the supported way to run opencraysec on Windows.
+CI builds and tests the workspace on Linux, macOS and native Windows, and a failure on any of them
+fails the workflow. The installer is not tested in native Windows, so WSL2 is still the supported way
+to install and run opencraysec on Windows.
 
 Options go after `sh -s --`:
 

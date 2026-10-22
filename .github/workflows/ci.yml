@@ -105,23 +105,19 @@ jobs:
         run: scripts/check-coverage.sh
 
   # The release binaries are Linux, but people build from source on other systems. This job finds out
-  # whether the workspace still compiles and passes its tests there. macOS is expected to pass and is
-  # a required check; native Windows is experimental (the installer is POSIX shell, and the code has
-  # not been verified there), so a failure on it is reported but does not fail the workflow. Promote it
-  # by removing `continue-on-error` once it is green.
+  # whether the workspace still compiles and passes its tests there. Both jobs are required: a red
+  # one fails the workflow, so `scripts/release.sh` will not tag the commit. (The installer is still
+  # POSIX shell; Windows is covered here for building and testing, not for installing.)
   portable:
     name: build and test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-latest
-            experimental: false
           - os: windows-latest
-            experimental: true
     steps:
       - uses: actions/checkout@v7
 
