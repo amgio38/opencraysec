@@ -5,6 +5,12 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ## [Unreleased]
 
+### Fixed
+
+- `scan-code` named a file with the platform's own separator, so on Windows a finding in a workflow was
+  `.github\workflows\ci.yml` where Linux and macOS print `.github/workflows/ci.yml`. Every scanner now
+  writes `/` on every platform, including paths read from `gitleaks` and `semgrep` reports.
+
 ## [0.20261022.3] - 2026-10-22
 
 ### Added

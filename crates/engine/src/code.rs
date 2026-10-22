@@ -609,11 +609,7 @@ fn collect(
                 .map(|m| m.len() <= MAX_FILE_BYTES)
                 .unwrap_or(false)
             {
-                let rel = path
-                    .strip_prefix(base)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .into_owned();
+                let rel = opencraysec_lockfile::relative_name(&path, base);
                 files.push((path, rel, lang));
             }
         }
@@ -651,11 +647,7 @@ pub fn parse_gitleaks(json: &str, root: &Path) -> Result<Vec<CodeFinding>, Strin
     let mut out = Vec::new();
     for r in v.as_array().into_iter().flatten() {
         let file = r.get("File").and_then(|x| x.as_str()).unwrap_or("");
-        let rel = Path::new(file)
-            .strip_prefix(root)
-            .unwrap_or(Path::new(file))
-            .to_string_lossy()
-            .into_owned();
+        let rel = opencraysec_lockfile::relative_name(Path::new(file), root);
         out.push(CodeFinding {
             rule: format!(
                 "gitleaks:{}",
@@ -737,11 +729,7 @@ pub fn parse_sarif(json: &str, root: &Path, source: &str) -> Result<Vec<CodeFind
                 .and_then(|u| u.as_str())
                 .unwrap_or("");
             let uri = uri.strip_prefix("file://").unwrap_or(uri);
-            let rel = Path::new(uri)
-                .strip_prefix(root)
-                .unwrap_or(Path::new(uri))
-                .to_string_lossy()
-                .into_owned();
+            let rel = opencraysec_lockfile::relative_name(Path::new(uri), root);
             let line = loc
                 .and_then(|l| l.get("region"))
                 .and_then(|r| r.get("startLine"))
