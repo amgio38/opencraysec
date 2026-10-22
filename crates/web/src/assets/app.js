@@ -326,7 +326,7 @@
         h('td', { text: f.advice || '' })));
     });
     var lines = [];
-    if (a.packages_checked) lines.push(a.packages_checked + ' MCP server package(s) with an exact version were checked against advisory data.');
+    if (a.packages_checked) lines.push(a.packages_checked + ' package(s) with an exact version, started or listed by MCP servers and skills, were checked against advisory data.');
     (a.unchecked || []).forEach(function (u) { lines.push('unchecked ' + u[0] + ': ' + u[1]); });
     if (a.home_scanned) lines.push('The home directory configuration was read as well.');
     (a.notes || []).forEach(function (n) { lines.push(n); });

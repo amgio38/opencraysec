@@ -125,14 +125,15 @@ enum Cmd {
         fail_on: Option<String>,
     },
     /// Check the files that steer an AI coding assistant (rule files, MCP server settings, hooks,
-    /// auto-run tasks) for hidden characters, injected instructions, download-and-run commands,
-    /// unpinned MCP packages and secrets. The packages an MCP server starts are checked against
-    /// advisory data. Rule findings are suspected patterns, not proof.
+    /// auto-run tasks, skills) for hidden characters, injected instructions, download-and-run
+    /// commands, unpinned packages and secrets. The packages an MCP server or a skill starts or lists
+    /// are checked against advisory data. Rule findings are suspected patterns, not proof.
     ScanAgentConfig {
         /// Project directory, or one configuration file.
         #[arg(default_value = ".")]
         path: PathBuf,
-        /// Also read the assistant settings in your home directory (~/.claude, ~/.cursor, ~/.gemini).
+        /// Also read the assistant settings and skills in your home directory (~/.claude,
+        /// ~/.cursor, ~/.gemini).
         #[arg(long)]
         include_home: bool,
         /// Never use the network.

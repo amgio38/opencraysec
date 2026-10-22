@@ -7,6 +7,15 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ### Added
 
+- Skills. `scan-agent-config` also reads every folder that holds a `SKILL.md` (wherever it sits, and
+  `~/.claude/skills` with `--include-home`): the Markdown gets the instruction rules, a script gets the
+  hidden-character, download-and-run and exfiltration rules and the secret rules, a shell script's
+  `npx`/`uvx`/`pip install`/`npm install` commands are read for the packages they name, and the
+  lockfiles and `package.json` in the folder are checked against advisory and malicious-package data
+  like any lockfile. Two new rules: `agent-skill-unpinned-package` and `agent-skill-binary` (a compiled
+  file shipped in a skill, by extension; never read).
+- `scan-code`: a documented example credential (`AKIAIOSFODNN7EXAMPLE`, `YOUR_KEY_HERE`) is not reported
+  by any secret rule any more; the placeholder check used to cover one of them.
 - `scan-agent-config` (MCP tool `scan_agent_config`): checks the files that steer an AI coding assistant
   (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.cursor/rules`, `copilot-instructions.md`,
   `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `.claude/settings.json`, `.vscode/tasks.json`).

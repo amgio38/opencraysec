@@ -43,8 +43,8 @@ There is no TLS: put it behind a reverse proxy if you expose it beyond a trusted
   Components of an SBOM that cannot be matched (operating-system packages, container images) appear in
   the notes at the top, never silently dropped.
 - **AI assistant configuration**: the findings of the latest `scan-agent-config`: rule, CWE, file and
-  line, what to do, and whether it is a suspected pattern or comes from published data about an MCP
-  server's package. The packages that could not be checked and the notes are listed under the table.
+  line, what to do, and whether it is a suspected pattern or comes from published data about a package
+  an MCP server or a skill starts or lists. The packages that could not be checked and the notes are listed under the table.
   The text that matched is never in the log or the report.
 - **Install-time code**: the packages whose lockfile entry says an install step runs code, with their
   lockfile. It is a list to review, not a vulnerability. A lockfile that cannot say is named in the notes

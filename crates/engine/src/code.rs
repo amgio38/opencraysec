@@ -370,6 +370,7 @@ const PLACEHOLDERS: &[&str] = &[
     "getenv",
     "environ",
     "placeholder",
+    "_here",
     "dummy",
     "redacted",
     "password123",
@@ -496,7 +497,9 @@ pub fn scan_text(rel: &str, lang: Lang2, text: &str, out: &mut Vec<CodeFinding>)
             {
                 continue;
             }
-            if rule.id == "secret-assigned-literal" && is_placeholder(line) {
+            // A documented example (`AKIAIOSFODNN7EXAMPLE`, `YOUR_KEY_HERE`) is not a leaked
+            // credential. A private key block has no such marker on its header line.
+            if rule.secret && rule.id != "secret-private-key" && is_placeholder(line) {
                 continue;
             }
             let snippet = if rule.secret {
@@ -1048,6 +1051,33 @@ mod tests {
             )
             .iter()
             .any(|f| f.rule == "secret-github-token")
+        );
+    }
+
+    #[test]
+    fn a_documented_example_credential_is_not_a_leak_but_a_real_looking_one_still_is() {
+        // The key AWS prints in its own documentation, and a "put your key here" placeholder.
+        assert!(hits("a.yaml", "AWS_ACCESS_KEY: AKIAIOSFODNN7EXAMPLE").is_empty());
+        assert!(hits("a.js", "apiKey: \"OPENAI_KEY_HERE\",").is_empty());
+        assert!(
+            hits(
+                "a.yaml",
+                "token: ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD # example"
+            )
+            .is_empty()
+        );
+        // The same shapes without a marker are still reported, and so is a private key header.
+        assert_eq!(
+            hits("a.yaml", "key: AKIAABCDEFGHIJKLMNOP")[0].rule,
+            "secret-aws-key"
+        ); // opencraysec:ignore
+        assert_eq!(
+            hits("a.js", "apiKey: \"abcdefghijklmnop1234\",")[0].rule,
+            "secret-assigned-literal"
+        );
+        assert_eq!(
+            hits("a.env", "-----BEGIN PRIVATE KEY----- example")[0].rule,
+            "secret-private-key"
         );
     }
 

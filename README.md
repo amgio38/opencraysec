@@ -39,9 +39,10 @@ your machine.
 - **Your own code too**: `scan-code` flags suspected hard-coded secrets, injection patterns, disabled TLS
   verification and unsafe deserialization, each with a CWE, and can run gitleaks or semgrep.
 - **The files that steer your assistant**: `scan-agent-config` reads rule files (`CLAUDE.md`,
-  `AGENTS.md`, `.cursorrules`, ...), MCP server settings, hooks and auto-run tasks for invisible
-  characters, injected instructions, commands that download and run code, unpinned MCP packages and
-  secrets, and checks the packages an MCP server starts against the same advisory and malicious-package
+  `AGENTS.md`, `.cursorrules`, ...), MCP server settings, hooks, auto-run tasks and skills (a folder with
+  a `SKILL.md`: its text, scripts and dependencies) for invisible characters, injected instructions,
+  commands that download and run code, unpinned packages, compiled files and secrets, and checks the
+  packages an MCP server or a skill starts or lists against the same advisory and malicious-package
   data. Every rule names its CWE and the OWASP entry behind it ([docs/AGENT-CONFIG.md](docs/AGENT-CONFIG.md)).
 - **A report people can read**: a read-only dashboard with charts, the vulnerability list and the history
   of fixes with references, or the same report as one HTML file.
@@ -122,7 +123,7 @@ opencraysec plan-fix .                   # the upgrade commands; nothing is modi
 opencraysec verify-fix . --id GHSA-xxxx-xxxx-xxxx   # re-scan; "resolved" needs an earlier scan of this path
 opencraysec record-fix . --id GHSA-xxxx-xxxx-xxxx --summary "Upgrade lodash" --reason "Prototype pollution"
 opencraysec scan-code .                  # suspected weaknesses in your own source
-opencraysec scan-agent-config .          # rule files, MCP servers, hooks of your AI assistant
+opencraysec scan-agent-config .          # rule files, MCP servers, hooks and skills of your AI assistant
 opencraysec scan-runtime                # PHP, nginx, Node.js ... installed here: end of life? behind?
 opencraysec scan-runtime php@8.2.30     # or name the versions, for a container or another machine
 opencraysec scan-runtime --nvd          # also the CVEs NVD lists for those versions (network)
@@ -156,7 +157,7 @@ gate; the report then says it is incomplete. `verify-fix` exits 1 when a finding
 | --- | --- |
 | `scan_dependencies` | Check lockfiles against current advisories, ranked, with usage evidence. |
 | `scan_code` | Suspected weaknesses in the project's own source. |
-| `scan_agent_config` | Rule files, MCP server settings, hooks and auto-run tasks that steer an AI assistant. |
+| `scan_agent_config` | Rule files, MCP server settings, hooks, auto-run tasks and skills that steer an AI assistant. |
 | `scan_runtime` | Installed interpreters, servers and databases against release and end-of-life data. |
 | `explain_advisory` | One advisory: what it is, CWE, exploitation signals, references. |
 | `plan_fix` | The minimal upgrades and the commands to run. Modifies nothing. |
@@ -185,8 +186,8 @@ Details, including what the log holds, are in [docs/DASHBOARD.md](docs/DASHBOARD
 - Dependency matching uses **lockfile versions**. Usage evidence is **source text**, not a call graph: it
   can miss dynamic use and cannot see use by other dependencies, so `not_found` means "your code does not
   import it", not "safe". For Go, run `govulncheck` for a call-graph proof.
-- `scan-agent-config` is pattern matching too: it cannot see what an MCP server does once it runs, only
-  the package it is started from. See [docs/AGENT-CONFIG.md](docs/AGENT-CONFIG.md) for each rule's
+- `scan-agent-config` is pattern matching too: it cannot see what an MCP server or a skill does once it
+  runs, only what it is made of and the package it is started from. See [docs/AGENT-CONFIG.md](docs/AGENT-CONFIG.md) for each rule's
   false positives and misses.
 - `scan-code` is pattern matching with a small rule pack. Every hit is *suspected*; confirm it before
   reporting.

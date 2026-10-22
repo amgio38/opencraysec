@@ -489,7 +489,7 @@ pub fn agent_text(r: &AgentReport) -> String {
     if r.packages_checked > 0 {
         let _ = writeln!(
             s,
-            "\n{} MCP server package(s) with an exact version were checked against advisory data.",
+            "\n{} package(s) with an exact version, started or listed by MCP servers and skills, were checked against advisory data.",
             r.packages_checked
         );
     }
