@@ -174,6 +174,8 @@ enum Kind {
     Script,
     /// A skill's `package.json`.
     Manifest,
+    /// A skill's `pyproject.toml`.
+    PyProject,
     /// A compiled file that ships with a skill (judged by its extension, never read).
     Binary,
 }
@@ -203,6 +205,7 @@ fn skill_kind(inner: &str) -> Option<Kind> {
         Some(e) if SCRIPT_EXTENSIONS.contains(&e) => Some(Kind::Script),
         Some(e) if BINARY_EXTENSIONS.contains(&e) => Some(Kind::Binary),
         _ if name == "package.json" => Some(Kind::Manifest),
+        _ if name == "pyproject.toml" => Some(Kind::PyProject),
         _ => None,
     }
 }
@@ -840,15 +843,85 @@ fn installed_packages(command: &str, args: &[String]) -> Option<Vec<Spec>> {
     Some(specs)
 }
 
-/// The packages a shell script starts or installs. Only whole lines are read; a line that is a
-/// comment is skipped.
-fn scan_script_packages(ctx: &mut Ctx, rel: &str, text: &str) {
+/// Text that marks a call which runs a command, in the languages a skill's scripts are written in.
+const RUNS_COMMANDS: &[&str] = &[
+    "os.system(",
+    "os.popen(",
+    "subprocess.",
+    "Popen(",
+    "check_call(",
+    "check_output(",
+    "exec(",
+    "execSync(",
+    "execFile(",
+    "execFileSync(",
+    "spawn(",
+    "spawnSync(",
+    "child_process",
+    "shell_exec(",
+    "system(",
+    "popen(",
+];
+
+/// The quoted strings on a line, without their quotes.
+fn string_literals(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        if !matches!(c, '"' | '\'' | '`') {
+            continue;
+        }
+        let mut lit = String::new();
+        let mut closed = false;
+        while let Some(d) = chars.next() {
+            if d == '\\' {
+                if let Some(escaped) = chars.next() {
+                    lit.push(escaped);
+                }
+            } else if d == c {
+                closed = true;
+                break;
+            } else {
+                lit.push(d);
+            }
+        }
+        if closed {
+            out.push(lit);
+        }
+    }
+    out
+}
+
+/// The commands a line of code may be running: each string on its own (`os.system("pip install x")`),
+/// and the strings from each one to the end joined by spaces (`["pip", "install", "x"]`, or the
+/// `"-m", "pip", "install", "x"` that follows an interpreter that is not a string).
+fn command_candidates(line: &str) -> Vec<String> {
+    let lits = string_literals(line);
+    let mut out = lits.clone();
+    for i in 0..lits.len() {
+        out.push(lits[i..].join(" "));
+    }
+    out
+}
+
+/// The packages a script starts or installs. A comment line is skipped.
+fn scan_script_packages(ctx: &mut Ctx, rel: &str, text: &str, shell: bool) {
     for (i, line) in text.lines().enumerate() {
         let t = line.trim_start();
         if t.starts_with('#') || t.starts_with("//") || line.len() > MAX_LINE {
             continue;
         }
-        for words in shell_commands(line) {
+        // A shell script is the commands themselves. In any other language a command is a string
+        // handed to a call that runs one, so only the strings of such a line are read: a message that
+        // says "pip install x" is not an install.
+        let candidates: Vec<String> = if shell {
+            vec![line.to_string()]
+        } else if RUNS_COMMANDS.iter().any(|m| line.contains(m)) {
+            command_candidates(line)
+        } else {
+            continue;
+        };
+        for words in candidates.iter().flat_map(|c| shell_commands(c)) {
             let Some((command, args)) = words.split_first() else {
                 continue;
             };
@@ -938,6 +1011,58 @@ fn scan_manifest(ctx: &mut Ctx, rel: &str, text: &str, has_lockfile: bool) {
     }
 }
 
+/// A skill's `pyproject.toml`: dependencies with an exact `==` version are checked. The rest are named
+/// as not checked, and when a lock file sits beside it the lock file says what is installed instead.
+fn scan_pyproject(ctx: &mut Ctx, rel: &str, text: &str, has_lockfile: bool) {
+    ctx.files_scanned += 1;
+    if has_lockfile {
+        return;
+    }
+    let deps = match opencraysec_lockfile::pyproject_dependencies(text) {
+        Ok(d) => d,
+        Err(e) => {
+            ctx.notes.push(format!("{rel}: {e}"));
+            ctx.extra_unchecked.push((
+                rel.into(),
+                "could not be read as TOML, so its dependencies were not checked".into(),
+            ));
+            return;
+        }
+    };
+    for (name, version) in deps.pinned {
+        ctx.origins.insert(rel.into(), "skill");
+        ctx.files_with_packages.insert(rel.into());
+        ctx.package_lines
+            .entry((rel.into(), name.clone(), version.clone()))
+            .or_insert_with(|| line_of(text, &name));
+        ctx.packages.push(Package {
+            ecosystem: Ecosystem::PyPI,
+            name,
+            version,
+            source: rel.into(),
+            dev: false,
+        });
+    }
+    if !deps.others.is_empty() {
+        let shown: Vec<&str> = deps.others.iter().take(8).map(String::as_str).collect();
+        ctx.extra_unchecked.push((
+            rel.into(),
+            format!(
+                "{} dependency specification(s) are not exact == pins and there is no lock file beside this pyproject.toml, so they were not checked: {}{}",
+                deps.others.len(),
+                shown.join(", "),
+                if deps.others.len() > shown.len() { ", ..." } else { "" }
+            ),
+        ));
+    }
+}
+
+fn has_python_lockfile(path: &Path) -> bool {
+    ["poetry.lock", "uv.lock", "Pipfile.lock"]
+        .iter()
+        .any(|n| path.with_file_name(n).is_file())
+}
+
 fn has_npm_lockfile(path: &Path) -> bool {
     [
         "package-lock.json",
@@ -957,8 +1082,9 @@ fn scan_file(ctx: &mut Ctx, rel: &str, kind: Kind, text: &str) {
     if kind == Kind::Mcp || kind == Kind::Settings {
         scan_servers(ctx, rel, text);
     }
-    if kind == Kind::Script && matches!(rel.rsplit('.').next(), Some("sh" | "bash" | "zsh")) {
-        scan_script_packages(ctx, rel, text);
+    if kind == Kind::Script {
+        let shell = matches!(rel.rsplit('.').next(), Some("sh" | "bash" | "zsh" | "ps1"));
+        scan_script_packages(ctx, rel, text, shell);
     }
 }
 
@@ -1181,6 +1307,8 @@ pub fn scan_agent_config(
                 let text = String::from_utf8_lossy(&bytes);
                 if kind == Kind::Manifest {
                     scan_manifest(&mut ctx, &rel, &text, has_npm_lockfile(&path));
+                } else if kind == Kind::PyProject {
+                    scan_pyproject(&mut ctx, &rel, &text, has_python_lockfile(&path));
                 } else {
                     scan_file(&mut ctx, &rel, kind, &text);
                 }
@@ -2387,6 +2515,216 @@ mod tests {
         assert!(
             why.contains("2 dependency range(s)") && why.contains("ranged, tagged"),
             "{why}"
+        );
+    }
+
+    /// A store with one malicious package in npm and one in PyPI.
+    fn mal_store_both(dir: &Path) -> Store {
+        let store = mal_store(dir);
+        let rec: OsvRecord = serde_json::from_str(
+            r#"{"id":"MAL-2026-10","summary":"Malicious code in evil-py (PyPI)",
+              "affected":[{"package":{"ecosystem":"PyPI","name":"evil-py"},
+                "ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"}]}]}]}"#,
+        )
+        .expect("json");
+        let line = opencraysec_db::encode_line(Ecosystem::PyPI, &rec)
+            .expect("enc")
+            .expect("some");
+        fs::write(dir.join("data/osv/PyPI.jsonl"), line + "\n").expect("w");
+        fs::write(
+            dir.join("data/osv/PyPI.meta.json"),
+            r#"{"updated_at":"t","records":1,"malicious":1}"#,
+        )
+        .expect("w");
+        store
+    }
+
+    fn scan_skill(files: &[(&str, &str)]) -> AgentReport {
+        let dir = tempfile::tempdir().expect("tmp");
+        let store = mal_store_both(dir.path());
+        let proj = dir.path().join("proj");
+        for (rel, text) in files {
+            let p = proj.join(rel);
+            fs::create_dir_all(p.parent().expect("parent")).expect("mkdir");
+            fs::write(p, text).expect("w");
+        }
+        scan_agent_config(&store, &proj, &offline()).expect("scan")
+    }
+
+    fn mal_hits(r: &AgentReport) -> Vec<(String, usize, String)> {
+        r.code
+            .findings
+            .iter()
+            .filter(|f| f.rule.starts_with("MAL-"))
+            .map(|f| (f.file.clone(), f.line, f.rule.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn a_skills_pyproject_is_read_for_exact_pins_and_the_rest_is_named_as_not_checked() {
+        assert_eq!(skill_kind("pyproject.toml"), Some(Kind::PyProject));
+        assert_eq!(skill_kind("sub/pyproject.toml"), Some(Kind::PyProject));
+        assert!(!Kind::PyProject.is_json());
+        let r = scan_skill(&[
+            ("skills/a/SKILL.md", "Be kind.\n"),
+            (
+                "skills/a/pyproject.toml",
+                "[project]\nname = \"a\"\ndependencies = [\n  \"requests==2.31.0\",\n  \"evil-py==1.0.0\",\n  \"loose>=1\",\n  \"bare\",\n]\n",
+            ),
+        ]);
+        assert_eq!(
+            mal_hits(&r),
+            vec![(
+                "skills/a/pyproject.toml".to_string(),
+                5,
+                "MAL-2026-10".to_string()
+            )]
+        );
+        let f = r
+            .code
+            .findings
+            .iter()
+            .find(|f| f.rule == "MAL-2026-10")
+            .expect("finding");
+        assert!(
+            f.title.starts_with("Malicious skill package evil-py@1.0.0"),
+            "{}",
+            f.title
+        );
+        assert_eq!(r.packages_checked, 2, "requests and evil-py");
+        assert_eq!(r.unchecked.len(), 1, "{:?}", r.unchecked);
+        assert_eq!(r.unchecked[0].0, "skills/a/pyproject.toml");
+        assert!(
+            r.unchecked[0]
+                .1
+                .contains("2 dependency specification(s) are not exact == pins")
+                && r.unchecked[0].1.ends_with("bare, loose"),
+            "{}",
+            r.unchecked[0].1
+        );
+    }
+
+    #[test]
+    fn a_pyproject_with_a_lock_file_beside_it_adds_nothing_and_a_broken_one_is_not_silent() {
+        let r = scan_skill(&[
+            ("skills/a/SKILL.md", "Be kind.\n"),
+            (
+                "skills/a/pyproject.toml",
+                "[project]\ndependencies = [\"loose>=1\", \"evil-py==1.0.0\"]\n",
+            ),
+            (
+                "skills/a/uv.lock",
+                "version = 1\n\n[[package]]\nname = \"evil-py\"\nversion = \"1.0.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n",
+            ),
+        ]);
+        let hits = mal_hits(&r);
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(
+            hits[0].0, "skills/a/uv.lock",
+            "the lock file says what is installed"
+        );
+        assert!(r.unchecked.is_empty(), "{:?}", r.unchecked);
+
+        let bad = scan_skill(&[
+            ("skills/b/SKILL.md", "Be kind.\n"),
+            ("skills/b/pyproject.toml", "[project\ndependencies = "),
+        ]);
+        assert!(
+            bad.code
+                .notes
+                .iter()
+                .any(|n| n.starts_with("skills/b/pyproject.toml: invalid pyproject.toml")),
+            "{:?}",
+            bad.code.notes
+        );
+        assert_eq!(bad.unchecked.len(), 1);
+        assert!(bad.unchecked[0].1.contains("could not be read as TOML"));
+        // A pyproject outside a skill is not this scan's business.
+        let outside = scan_skill(&[(
+            "pyproject.toml",
+            "[project]\ndependencies = [\"evil-py==1.0.0\"]\n",
+        )]);
+        assert!(mal_hits(&outside).is_empty() && outside.unchecked.is_empty());
+    }
+
+    #[test]
+    fn a_pip_or_npm_install_in_a_python_or_javascript_skill_script_is_read() {
+        let py = concat!(
+            "import os, subprocess, sys\n",
+            "os.system(\"pip install evil-py==1.0.0\")\n",
+            "subprocess.run([\"pip\", \"install\", \"loose-pkg\"])\n",
+            "subprocess.check_call([sys.executable, \"-m\", \"pip\", \"install\", \"evil-py==1.0.0\"])\n",
+            "print(\"to set up, run: pip install other-pkg\")\n",
+            "# os.system(\"pip install commented==1.0.0\")\n",
+            "msg = \"npx -y evil-mcp@1.0.0\"\n",
+        );
+        let js = concat!(
+            "const { execSync, spawnSync } = require('child_process');\n",
+            "execSync(\"npm install evil-mcp@1.0.0\");\n",
+            "spawnSync('npx', ['-y', 'evil-mcp@1.0.0']);\n",
+            "spawnSync('npx', ['-y', 'loose-tool']);\n",
+            "console.log(\"npm install evil-mcp@1.0.0\");\n",
+            "// execSync(\"npm install commented@1.0.0\");\n",
+        );
+        let r = scan_skill(&[
+            ("skills/a/SKILL.md", "Be kind.\n"),
+            ("skills/a/setup.py", py),
+            ("skills/a/setup.js", js),
+            (
+                "skills/a/setup.ps1",
+                "pip install evil-py==2.0.0\n# pip install nope==1.0\n",
+            ),
+        ]);
+        let mut hits = mal_hits(&r);
+        hits.sort();
+        // evil-py 1.0.0 at the first line of the Python file that installs it (lines 2 and 4 are the
+        // same package and version, so one finding), evil-py 2.0.0 in the PowerShell file, and
+        // evil-mcp at the first line of the JavaScript file. The same package and version named in two
+        // files would be one finding, at the first place it was found.
+        let places: Vec<(&str, usize)> = hits.iter().map(|(f, l, _)| (f.as_str(), *l)).collect();
+        assert!(places.contains(&("skills/a/setup.py", 2)), "{places:?}");
+        assert!(places.contains(&("skills/a/setup.js", 2)), "{places:?}");
+        assert!(places.contains(&("skills/a/setup.ps1", 1)), "{places:?}");
+        assert!(
+            !places
+                .iter()
+                .any(|(f, l)| *f == "skills/a/setup.py" && matches!(*l, 5..=7)),
+            "a message, a comment and a bare string are not installs: {places:?}"
+        );
+        assert!(
+            !places
+                .iter()
+                .any(|(f, l)| *f == "skills/a/setup.js" && matches!(*l, 5 | 6)),
+            "{places:?}"
+        );
+        let unpinned: Vec<(&str, usize)> = r
+            .code
+            .findings
+            .iter()
+            .filter(|f| f.rule == "agent-skill-unpinned-package")
+            .map(|f| (f.file.as_str(), f.line))
+            .collect();
+        assert!(unpinned.contains(&("skills/a/setup.py", 3)), "{unpinned:?}");
+        assert!(unpinned.contains(&("skills/a/setup.js", 4)), "{unpinned:?}");
+        assert_eq!(unpinned.len(), 2, "{unpinned:?}");
+    }
+
+    #[test]
+    fn string_literals_and_command_candidates_read_quoted_text_only() {
+        assert_eq!(
+            string_literals("run(\"a b\", 'c', `d`, \"e\\\"f\") # \"x\""),
+            vec!["a b", "c", "d", "e\"f", "x"]
+        );
+        assert!(string_literals("no quotes here").is_empty());
+        assert!(string_literals("\"unterminated").is_empty());
+        assert_eq!(
+            command_candidates("call([\"pip\", \"install\", \"x\"])"),
+            vec!["pip", "install", "x", "pip install x", "install x", "x"]
+        );
+        assert!(
+            RUNS_COMMANDS
+                .iter()
+                .any(|m| "subprocess.run(x)".contains(m))
         );
     }
 

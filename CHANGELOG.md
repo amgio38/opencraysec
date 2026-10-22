@@ -32,7 +32,9 @@ The release workflow refuses a tag whose version has no `## [version]` section.
   hidden-character, download-and-run and exfiltration rules and the secret rules, a shell script's
   `npx`/`uvx`/`pip install`/`npm install` commands are read for the packages they name, and the
   lockfiles and `package.json` in the folder are checked against advisory and malicious-package data
-  like any lockfile. Two new rules: `agent-skill-unpinned-package` and `agent-skill-binary` (a compiled
+  like any lockfile (a `pyproject.toml` too: exact `==` pins are matched, other specifications are
+  listed as unchecked, and Python, JavaScript, TypeScript, Ruby, Perl and PowerShell scripts are read for
+  installs as well). Two new rules: `agent-skill-unpinned-package` and `agent-skill-binary` (a compiled
   file shipped in a skill, by extension; never read).
 - `scan-code`: a documented example credential (`AKIAIOSFODNN7EXAMPLE`, `YOUR_KEY_HERE`) is not reported
   by any secret rule any more; the placeholder check used to cover one of them.

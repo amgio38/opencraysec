@@ -39,9 +39,16 @@ stays inside its workspace) adds `~/.claude/settings.json`, `~/.claude/CLAUDE.md
 `name==1.2.3`) it is checked against the same advisory data as a lockfile: [OSV](https://osv.dev),
 including its malicious-package reports (see [DATA-SOURCES.md](DATA-SOURCES.md#malicious-packages)).
 The same goes for a skill: the lockfiles in its folder, the dependencies with an exact version in its
-`package.json` (when no lockfile sits beside it), and the packages a shell script starts or installs
-(`npx name@1.2.3`, `pip install name==1.2.3`, `npm install name@1.2.3`, and the other launchers listed
-above). Those findings carry the advisory id as the rule and say `advisory` as their confidence. A package
+`package.json` or `pyproject.toml` (when no lockfile sits beside it), and the packages a script starts or
+installs (`npx name@1.2.3`, `pip install name==1.2.3`, `npm install name@1.2.3`, and the other launchers
+listed above). A `pyproject.toml` is read for `[project]` dependencies, optional dependencies,
+`[dependency-groups]`, `[build-system] requires` and Poetry's tables; only an `==` pin can be matched, and
+every other specification (a range, a caret, a bare name) is listed as `unchecked` when no `poetry.lock`,
+`uv.lock` or `Pipfile.lock` sits beside it. In a shell or PowerShell script (`.sh`, `.bash`, `.zsh`,
+`.ps1`) whole lines are read. In a Python, JavaScript, TypeScript, Ruby or Perl script only the string
+literals on a line that runs a command (`os.system(`, `subprocess.`, `Popen(`, `exec(`, `execSync(`,
+`spawn(` and similar) are read, so a message such as `print("pip install x")` is not taken for an
+install. Those findings carry the advisory id as the rule and say `advisory` as their confidence. A package
 without an exact version cannot be matched; it is listed as `unchecked` and flagged by
 `agent-mcp-unpinned`. Names and versions leave the machine only in the case a lockfile scan also sends
 them: an ecosystem with no local data, without `--offline`.
@@ -67,7 +74,7 @@ MITRE's.
 | `agent-config-fetch-exec` | high | The same patterns in a hook, a task, an MCP server command or a script that ships with a skill | CWE-494 | MCP04:2025, MCP05:2025 | Only one line at a time is read: a command split over several lines is missed. |
 | `agent-exfiltrate` | high | A line that uses `curl`, `wget`, `send`, `post`, `upload` or similar, names a URL, and names a file that holds secrets (`.env`, `.ssh`, `id_rsa`, `.aws`, credentials) or the whole environment (`printenv`, `os.environ`, `process.env`, `env \|`) | CWE-200 | MCP01:2025, LLM02:2025 | A line that warns against it ("never send ...") is skipped. A single `$TOKEN` in a call is **not** matched: `curl -H "Authorization: Bearer $TOKEN" <api>` is how an API is called, and a line does not say whether the host is the one the token belongs to. So a script that sends a lone token to a stranger is missed. |
 | `agent-mcp-unpinned` | medium | An MCP server started from a package with no exact version (`npx -y name`, `uvx name`, `name@latest`, `name@^1.2`) | CWE-1357 | MCP04:2025, LLM03:2025 | The package name appears in the finding. A server started some other way (a container, a local script) is not checked, and is counted under `unchecked` only when it is a path, URL or git source. |
-| `agent-skill-unpinned-package` | medium | A shell script in a skill that starts or installs a package with no exact version (`npx name`, `uvx name`, `pip install name`, `npm install name`, `name>=1`) | CWE-1357 | LLM03:2025 | Only shell scripts are read for install commands, and only whole lines: an install built up in a variable, or run from Python or JavaScript code, is missed. `package.json` ranges are normal and are listed as unchecked, not reported here. |
+| `agent-skill-unpinned-package` | medium | A shell script in a skill that starts or installs a package with no exact version (`npx name`, `uvx name`, `pip install name`, `npm install name`, `name>=1`) | CWE-1357 | LLM03:2025 | Shell and PowerShell scripts are read line by line; Python, JavaScript, TypeScript, Ruby and Perl scripts only through the string literals of a line that runs a command. The literals of one line are also tried joined (`["pip", "install", "x==1"]`), but an install built up in a variable or across several lines is missed. `package.json` ranges are normal and are listed as unchecked, not reported here. |
 | `agent-skill-binary` | medium | A compiled file inside a skill, recognised by its extension | CWE-829 | LLM03:2025 | A skill that legitimately ships a helper binary is reported. A binary with no extension, or a renamed one, is missed. |
 | `agent-auto-run-on-open` | medium | A task with `"runOn": "folderOpen"`, which runs when the folder is opened | CWE-829 | none | OWASP has no entry for this; the reasoning is that anything in a repository that runs on open runs for everyone who opens it. Most such tasks are harmless: read them. |
 

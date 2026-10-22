@@ -151,6 +151,112 @@ pub fn requirements_unchecked(text: &str) -> usize {
         .count()
 }
 
+/// The dependencies a `pyproject.toml` declares.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct PyProject {
+    /// Exact `name==version` pins: the only dependencies an advisory can be matched against.
+    pub pinned: Vec<(String, String)>,
+    /// The names of dependencies with no exact pin (a range, a bare version, a URL, a path).
+    pub others: Vec<String>,
+}
+
+/// The name at the start of a requirement string (`requests[socks]>=2` gives `requests`).
+fn requirement_name(spec: &str) -> &str {
+    let spec = spec.trim();
+    let end = spec
+        .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')))
+        .unwrap_or(spec.len());
+    &spec[..end]
+}
+
+fn add_requirement(out: &mut PyProject, spec: &str) {
+    let name = requirement_name(spec);
+    if name.is_empty() {
+        return;
+    }
+    match classify(spec) {
+        Requirement::Pinned(n, v) => out.pinned.push((n.to_string(), v.to_string())),
+        _ => out.others.push(name.to_string()),
+    }
+}
+
+fn add_array(out: &mut PyProject, value: Option<&toml::Value>) {
+    for item in value.and_then(|v| v.as_array()).into_iter().flatten() {
+        if let Some(spec) = item.as_str() {
+            add_requirement(out, spec);
+        }
+    }
+}
+
+/// A Poetry dependency table: `name = "^1.2"`, or `name = { version = "==1.2.3" }`. Only an exact
+/// `==` pin is read as one; a bare version is not, because Poetry's own reading of it is not ours to guess.
+fn add_poetry_table(out: &mut PyProject, table: Option<&toml::Value>) {
+    for (name, value) in table.and_then(|t| t.as_table()).into_iter().flatten() {
+        if name == "python" {
+            continue;
+        }
+        let version = value
+            .as_str()
+            .or_else(|| value.get("version").and_then(|v| v.as_str()));
+        match version {
+            Some(v) if v.trim_start().starts_with("==") => {
+                add_requirement(out, &format!("{name}{}", v.trim()));
+            }
+            _ => out.others.push(name.clone()),
+        }
+    }
+}
+
+/// `pyproject.toml`: the dependencies of `[project]` (PEP 621), its optional groups, the
+/// `[dependency-groups]` (PEP 735), `[build-system] requires` and Poetry's tables. Environment markers
+/// and extras are ignored. Nothing here resolves a range: only an exact `==` pin is matchable.
+pub fn pyproject_dependencies(text: &str) -> Result<PyProject, String> {
+    let doc: toml::Value =
+        toml::from_str(text).map_err(|e| format!("invalid pyproject.toml: {e}"))?;
+    let mut out = PyProject::default();
+    add_array(
+        &mut out,
+        doc.get("project").and_then(|p| p.get("dependencies")),
+    );
+    for (_, group) in doc
+        .get("project")
+        .and_then(|p| p.get("optional-dependencies"))
+        .and_then(|t| t.as_table())
+        .into_iter()
+        .flatten()
+    {
+        add_array(&mut out, Some(group));
+    }
+    for (_, group) in doc
+        .get("dependency-groups")
+        .and_then(|t| t.as_table())
+        .into_iter()
+        .flatten()
+    {
+        add_array(&mut out, Some(group));
+    }
+    add_array(
+        &mut out,
+        doc.get("build-system").and_then(|b| b.get("requires")),
+    );
+    let poetry = doc.get("tool").and_then(|t| t.get("poetry"));
+    add_poetry_table(&mut out, poetry.and_then(|p| p.get("dependencies")));
+    add_poetry_table(&mut out, poetry.and_then(|p| p.get("dev-dependencies")));
+    for (_, group) in poetry
+        .and_then(|p| p.get("group"))
+        .and_then(|g| g.as_table())
+        .into_iter()
+        .flatten()
+    {
+        add_poetry_table(&mut out, group.get("dependencies"));
+    }
+    out.pinned.sort();
+    out.pinned.dedup();
+    out.others.sort();
+    out.others.dedup();
+    Ok(out)
+}
+
 /// The files named by `-r`/`--requirement` lines, as written.
 pub fn requirements_includes(text: &str) -> Vec<String> {
     text.lines()
@@ -253,5 +359,106 @@ mod tests {
         let t = r#"{"default":{"requests":{"version":"==2.19.0"}},"develop":{"x":{"git":"u"}}}"#;
         let p = pipfile_lock(t, "Pipfile.lock").expect("parses");
         assert_eq!(p.len(), 1);
+    }
+
+    #[test]
+    fn pyproject_pins_are_matchable_and_everything_else_is_named() {
+        let t = r#"
+[build-system]
+requires = ["setuptools==68.0.0", "wheel"]
+
+[project]
+name = "demo"
+dependencies = [
+  "requests==2.31.0",
+  "flask>=2.0",
+  "Django[argon2]==4.2.1 ; python_version >= '3.9'",
+  "click",
+  "pkg @ https://example.invalid/pkg.whl",
+  "wild==1.*",
+  "multi==1.0,<2",
+]
+
+[project.optional-dependencies]
+docs = ["sphinx==7.0.0"]
+test = ["pytest~=7.0"]
+
+[dependency-groups]
+dev = ["ruff==0.1.0", { include-group = "docs" }]
+"#;
+        let p = pyproject_dependencies(t).expect("parses");
+        assert_eq!(
+            p.pinned,
+            vec![
+                ("Django".to_string(), "4.2.1".to_string()),
+                ("requests".to_string(), "2.31.0".to_string()),
+                ("ruff".to_string(), "0.1.0".to_string()),
+                ("setuptools".to_string(), "68.0.0".to_string()),
+                ("sphinx".to_string(), "7.0.0".to_string()),
+            ],
+            "extras and environment markers do not stop an exact pin from being one"
+        );
+        assert_eq!(
+            p.others,
+            vec!["click", "flask", "multi", "pkg", "pytest", "wheel", "wild"],
+            "a range, a bare name, a URL, a wildcard and a pin with a second bound are named, not dropped"
+        );
+    }
+
+    #[test]
+    fn poetry_tables_give_an_exact_pin_only_for_a_double_equals() {
+        let t = r#"
+[tool.poetry.dependencies]
+python = "^3.10"
+exact = "==1.2.3"
+caret = "^2.0"
+bare = "1.2.3"
+tabled = { version = "==4.5.6", extras = ["x"] }
+ranged = { version = ">=1", optional = true }
+gitdep = { git = "https://example.invalid/r.git" }
+
+[tool.poetry.group.dev.dependencies]
+devexact = "==0.1.0"
+
+[tool.poetry.dev-dependencies]
+olddev = "^1"
+"#;
+        let p = pyproject_dependencies(t).expect("parses");
+        assert_eq!(
+            p.pinned,
+            vec![
+                ("devexact".to_string(), "0.1.0".to_string()),
+                ("exact".to_string(), "1.2.3".to_string()),
+                ("tabled".to_string(), "4.5.6".to_string()),
+            ]
+        );
+        assert_eq!(
+            p.others,
+            vec!["bare", "caret", "gitdep", "olddev", "ranged"]
+        );
+    }
+
+    #[test]
+    fn a_pyproject_with_no_dependencies_or_with_broken_toml_is_told_apart() {
+        assert_eq!(
+            pyproject_dependencies("[project]\nname = \"x\"\n").expect("parses"),
+            PyProject::default()
+        );
+        assert_eq!(
+            pyproject_dependencies("").expect("empty parses"),
+            PyProject::default()
+        );
+        let err = pyproject_dependencies("[project\nname = ").expect_err("broken");
+        assert!(err.starts_with("invalid pyproject.toml"), "{err}");
+        assert_eq!(requirement_name("requests[socks]>=2"), "requests");
+        assert_eq!(requirement_name("  a.b_c-d==1"), "a.b_c-d");
+        assert_eq!(requirement_name("==1"), "");
+        let mut out = PyProject::default();
+        add_requirement(&mut out, "==1");
+        assert_eq!(
+            out,
+            PyProject::default(),
+            "a requirement with no name adds nothing"
+        );
     }
 }

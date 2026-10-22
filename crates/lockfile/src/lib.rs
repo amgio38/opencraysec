@@ -15,6 +15,7 @@ mod rust;
 mod sbom;
 pub mod workflow;
 
+pub use python::{PyProject, pyproject_dependencies};
 pub use sbom::SOURCE_PREFIX as SBOM_SOURCE_PREFIX;
 
 /// Directories never descended into: dependency trees and build output.
