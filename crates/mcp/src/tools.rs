@@ -5,13 +5,13 @@ use std::path::{Path, PathBuf};
 use opencraysec_core::{Ecosystem, Severity};
 use opencraysec_db::{runtime_data, update};
 use opencraysec_engine::{
-    CodeOptions, RuntimeOptions, ScanOptions, ScanReport, explain, plan_fix, scan, scan_code,
-    scan_runtime, verify_fix,
+    AgentOptions, CodeOptions, RuntimeOptions, ScanOptions, ScanReport, explain, plan_fix, scan,
+    scan_agent_config, scan_code, scan_runtime, verify_fix,
 };
 use opencraysec_log::EventLog;
 use opencraysec_log::events::{
-    FixInput, code_event, log_scan, plan_event, record_fix, runtime_event, seen_finding_ids,
-    verify_event,
+    FixInput, agent_event, code_event, log_scan, plan_event, record_fix, runtime_event,
+    seen_finding_ids, verify_event,
 };
 use serde_json::{Value, json};
 
@@ -69,6 +69,15 @@ pub fn list() -> Value {
                 "limit": { "type": "integer", "description": "Max findings returned (default 100)." }
             } },
             "annotations": { "readOnlyHint": true }
+        },
+        {
+            "name": "scan_agent_config",
+            "description": "Check the files that steer an AI coding assistant in the project: rule files (CLAUDE.md, AGENTS.md, GEMINI.md, .cursorrules, .cursor/rules, copilot-instructions.md), MCP server settings (.mcp.json, .cursor/mcp.json, .vscode/mcp.json), hooks (.claude/settings.json) and auto-run tasks (.vscode/tasks.json). Reports invisible or bidirectional characters, instruction-override phrases, instructions hidden in HTML comments, commands that download and run code, lines that send secrets to a URL, MCP servers started from unpinned packages and hard-coded tokens. Packages an MCP server starts with an exact version are also checked against current advisories, including malicious-package reports. Rule findings are SUSPECTED patterns: read the file before reporting. The matched text is never returned. It stays inside the workspace and does not read the home directory.",
+            "inputSchema": { "type": "object", "properties": {
+                "path": path,
+                "limit": { "type": "integer", "description": "Max findings returned (default 100)." }
+            } },
+            "annotations": { "readOnlyHint": true, "openWorldHint": true }
         },
         {
             "name": "scan_runtime",
@@ -265,6 +274,26 @@ pub fn call(cfg: &ServerConfig, name: &str, args: &Value) -> Result<Value, ToolE
             };
             let r = scan_code(&root, &opts).or_else(|e| fail(e.to_string()))?;
             logged(cfg, |log, client| log.append(&code_event(&r, client)));
+            Ok(serde_json::to_value(r).unwrap_or(Value::Null))
+        }
+        "scan_agent_config" => {
+            let root = resolve(&cfg.workspace, str_arg(args, "path")).or_else(fail_str)?;
+            let limit = args
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map_or(100, |n| n as usize);
+            let opts = AgentOptions {
+                // The server stays inside its workspace: the home directory is never read.
+                include_home: false,
+                scan: ScanOptions {
+                    offline: cfg.offline,
+                    ..ScanOptions::default()
+                },
+                max_findings: Some(limit),
+                ..AgentOptions::default()
+            };
+            let r = scan_agent_config(&cfg.store, &root, &opts).or_else(|e| fail(e.to_string()))?;
+            logged(cfg, |log, client| log.append(&agent_event(&r, client)));
             Ok(serde_json::to_value(r).unwrap_or(Value::Null))
         }
         "scan_runtime" => {

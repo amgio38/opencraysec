@@ -45,6 +45,21 @@ Arguments: `path`, `external` (`["gitleaks"]`, `["semgrep"]`), `semgrep_config`,
 Result: `files_scanned`, `findings` (`rule`, `title`, `cwe`, `severity`, `file`, `line`, `snippet`,
 `confidence: "suspected"`, `advice`, `source`), `external` (how each external scanner went), `notes`.
 
+## scan_agent_config
+
+The files that steer an AI coding assistant in the project: rule files, MCP server settings, hooks and
+auto-run tasks (see [AGENT-CONFIG.md](AGENT-CONFIG.md) for the files and every rule). Arguments: `path`,
+`limit` (default 100). It stays inside the workspace and **never reads the home directory**; there is no
+argument for it (the command line has `--include-home`).
+
+Result: `files_scanned`, `findings` (`rule`, `title`, `cwe`, `severity`, `file`, `line`, `confidence`,
+`advice`, `source`), `packages_checked` (MCP server packages with an exact version that were checked
+against advisory data), `unchecked` (files that name packages which could not be checked, and why),
+`home_scanned` and `notes`. A finding from a rule says `suspected` and `builtin`; one from published data
+says `advisory` and `osv`, with the advisory id as its `rule` (a malicious package is `critical`). The
+matched text is never returned, and `snippet` is always empty. The call is recorded in the activity log
+(kind `scan_agent_config`).
+
 ## explain_advisory
 
 `id` (`GHSA-...`, `CVE-...`, `RUSTSEC-...`, `GO-...`), optional `offline`. Result: `summary`, `details`,

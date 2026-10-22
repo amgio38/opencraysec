@@ -3,6 +3,7 @@
 
 use std::fmt;
 
+pub mod agent;
 pub mod code;
 pub mod explain;
 pub mod fix;
@@ -11,6 +12,7 @@ pub mod report;
 pub mod runtime;
 pub mod scan;
 
+pub use agent::{AgentOptions, AgentReport, scan_agent_config};
 pub use code::{CodeFinding, CodeOptions, CodeReport, scan_code};
 pub use explain::{Explanation, explain};
 pub use fix::{FixPlan, FixStep, VerifyOutcome, plan_fix, verify_fix};

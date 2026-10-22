@@ -3,7 +3,9 @@
 use std::path::Path;
 
 use opencraysec_core::{Finding, Severity};
-use opencraysec_engine::{CodeReport, FixPlan, RuntimeReport, ScanReport, VerifyOutcome};
+use opencraysec_engine::{
+    AgentReport, CodeReport, FixPlan, RuntimeReport, ScanReport, VerifyOutcome,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -140,6 +142,39 @@ pub fn code_event(r: &CodeReport, client: Option<&str>) -> Event {
             "total": r.findings.len(),
             "by_severity": severity_counts(r.findings.iter().map(|f| &f.severity)),
             "external": r.external,
+            "findings": findings,
+        }),
+    )
+}
+
+/// The event for a finished assistant configuration scan. Like the code scan's event it holds the
+/// rule, the place and a fixed sentence for each finding, never the matched text.
+pub fn agent_event(r: &AgentReport, client: Option<&str>) -> Event {
+    let findings: Vec<Value> = r
+        .code
+        .findings
+        .iter()
+        .take(MAX_FINDINGS)
+        .map(|f| {
+            json!({
+                "rule": f.rule, "title": f.title, "cwe": f.cwe, "severity": f.severity.as_str(),
+                "file": f.file, "line": f.line, "source": f.source, "advice": f.advice,
+                "confidence": f.confidence,
+            })
+        })
+        .collect();
+    Event::new(
+        "scan_agent_config",
+        &r.code.root,
+        client,
+        json!({
+            "files_scanned": r.code.files_scanned,
+            "total": r.code.findings.len(),
+            "by_severity": severity_counts(r.code.findings.iter().map(|f| &f.severity)),
+            "packages_checked": r.packages_checked,
+            "unchecked": r.unchecked,
+            "home_scanned": r.home_scanned,
+            "notes": r.code.notes,
             "findings": findings,
         }),
     )
@@ -661,6 +696,65 @@ mod tests {
             notes.contains("install-time code not determined for Cargo.lock: no build.rs record"),
             "{notes}"
         );
+    }
+
+    #[test]
+    fn an_assistant_configuration_scan_reaches_the_event_and_the_dashboard_without_matched_text() {
+        use opencraysec_engine::{CodeFinding, CodeReport};
+        let finding =
+            |rule: &str, severity: opencraysec_core::Severity, source: &str| CodeFinding {
+                rule: rule.into(),
+                title: format!("title of {rule}"),
+                cwe: "CWE-1427".into(),
+                severity,
+                file: "CLAUDE.md".into(),
+                line: 3,
+                snippet: "MATCHED-TEXT-MUST-NOT-APPEAR".into(),
+                confidence: "suspected".into(),
+                advice: "advice".into(),
+                source: source.into(),
+            };
+        let report = AgentReport {
+            code: CodeReport {
+                root: "/p".into(),
+                files_scanned: 4,
+                findings: vec![
+                    finding("MAL-2026-9", opencraysec_core::Severity::Critical, "osv"),
+                    finding(
+                        "agent-hidden-unicode",
+                        opencraysec_core::Severity::High,
+                        "builtin",
+                    ),
+                ],
+                external: vec![],
+                notes: vec!["a note".into()],
+            },
+            packages_checked: 2,
+            unchecked: vec![(".mcp.json".into(), "1 package has no exact version".into())],
+            home_scanned: false,
+        };
+        let ev = agent_event(&report, Some("cli"));
+        assert_eq!(ev.kind, "scan_agent_config");
+        assert_eq!(ev.data["total"], 2);
+        assert_eq!(ev.data["by_severity"]["critical"], 1);
+        assert_eq!(ev.data["packages_checked"], 2);
+        assert_eq!(ev.data["findings"][1]["rule"], "agent-hidden-unicode");
+        assert_eq!(ev.data["findings"][0]["confidence"], "suspected");
+        assert!(
+            !ev.data.to_string().contains("MATCHED-TEXT-MUST-NOT-APPEAR"),
+            "the matched line must not reach the log"
+        );
+        let s = crate::summary::summarize(&[ev], Some("/p"));
+        assert_eq!(s["kpis"]["agent_config_issues"], 2);
+        assert_eq!(
+            s["kpis"]["malicious_open"], 1,
+            "a malicious package started by an MCP server is counted"
+        );
+        assert_eq!(s["agent_config"]["files_scanned"], 4);
+        assert_eq!(s["agent_config"]["unchecked"][0][0], ".mcp.json");
+        assert_eq!(s["agent_config"]["findings"][0]["rule"], "MAL-2026-9");
+        let none = crate::summary::summarize(&[], Some("/p"));
+        assert!(none.get("agent_config").is_none() || none["agent_config"].is_null());
     }
 
     #[test]

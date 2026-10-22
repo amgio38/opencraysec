@@ -54,7 +54,7 @@ The URL variables exist for mirrors and air-gapped setups. Empty values are igno
 | Code | Meaning |
 | --- | --- |
 | 0 | Success. |
-| 1 | `scan`/`scan-code` found something at or above `--fail-on`; `verify-fix` found a remaining finding, an `unknown` id, or could not be trusted; `scan-runtime` found a product that is end of life or behind its newest patch release, or (with `--nvd`) a CVE. |
+| 1 | `scan`/`scan-code`/`scan-agent-config` found something at or above `--fail-on`; `verify-fix` found a remaining finding, an `unknown` id, or could not be trusted; `scan-runtime` found a product that is end of life or behind its newest patch release, or (with `--nvd`) a CVE. |
 | 2 | Bad arguments. |
 | 3 | `scan --fail-on` found nothing at or above the threshold, but a pass would prove nothing: no lockfile was found, a lockfile was unreadable, an ecosystem has no advisory data, or the only dependencies were requirement lines that cannot be matched (no exact `==` pin). Unmatched requirement lines next to dependencies that were checked do not fail the gate; they are listed in the report, which then says it is incomplete. |
 | 3 (also) | `scan-runtime` could not judge anything: nothing was detected, no release data is stored, or every product was `unknown`. |

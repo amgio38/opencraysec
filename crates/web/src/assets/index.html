@@ -61,6 +61,13 @@
   </section>
 
   <section class="block">
+    <h2>AI assistant configuration</h2>
+    <div class="desc">What the latest <span class="mono">scan-agent-config</span> found in the files that steer an AI coding assistant: rule files, MCP server settings, hooks and auto-run tasks. Rule findings are suspected patterns to confirm; advisory findings come from published data about the packages an MCP server starts. The text that matched is never kept.</div>
+    <div class="tablewrap"><table id="agent"><thead></thead><tbody></tbody></table></div>
+    <div id="agent-notes"></div>
+  </section>
+
+  <section class="block">
     <h2>Suspected issues in your own code</h2>
     <div class="desc">Pattern matches from the built-in rules (and gitleaks/semgrep when requested). These are leads to confirm, not proven vulnerabilities.</div>
     <div class="tablewrap"><table id="code"><thead></thead><tbody></tbody></table></div>
@@ -69,7 +76,7 @@
   <footer>
     <div id="sources"></div>
     <ul>
-      <li>Data: <a href="https://osv.dev" rel="noopener noreferrer" target="_blank">OSV</a>, <a href="https://nvd.nist.gov" rel="noopener noreferrer" target="_blank">NVD</a>, <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" rel="noopener noreferrer" target="_blank">CISA KEV</a>, <a href="https://www.first.org/epss/" rel="noopener noreferrer" target="_blank">EPSS</a>, <a href="https://github.com/ossf/malicious-packages" rel="noopener noreferrer" target="_blank">OpenSSF Malicious Packages</a> (through OSV), <a href="https://cwe.mitre.org" rel="noopener noreferrer" target="_blank">MITRE CWE</a>; for runtime products <a href="https://endoflife.date" rel="noopener noreferrer" target="_blank">endoflife.date</a> and <a href="https://www.php.net/releases/" rel="noopener noreferrer" target="_blank">php.net</a>.</li>
+      <li>Data: <a href="https://osv.dev" rel="noopener noreferrer" target="_blank">OSV</a>, <a href="https://nvd.nist.gov" rel="noopener noreferrer" target="_blank">NVD</a>, <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" rel="noopener noreferrer" target="_blank">CISA KEV</a>, <a href="https://www.first.org/epss/" rel="noopener noreferrer" target="_blank">EPSS</a>, <a href="https://github.com/ossf/malicious-packages" rel="noopener noreferrer" target="_blank">OpenSSF Malicious Packages</a> (through OSV), <a href="https://cwe.mitre.org" rel="noopener noreferrer" target="_blank">MITRE CWE</a>, <a href="https://owasp.org/www-project-mcp-top-10/" rel="noopener noreferrer" target="_blank">OWASP MCP Top 10</a> and <a href="https://genai.owasp.org/llm-top-10/" rel="noopener noreferrer" target="_blank">OWASP LLM Top 10</a> (the basis of the assistant-configuration rules); for runtime products <a href="https://endoflife.date" rel="noopener noreferrer" target="_blank">endoflife.date</a> and <a href="https://www.php.net/releases/" rel="noopener noreferrer" target="_blank">php.net</a>.</li>
       <li>A clean result means no known advisory matched the lockfile versions; it does not prove the code is secure.</li>
       <li>This report is read-only and kept on this machine. It lists package names and advisory ids; share it with care.</li>
     </ul>

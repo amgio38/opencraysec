@@ -5,7 +5,8 @@ use std::fmt::Write;
 use opencraysec_core::{Ecosystem, Package, Severity};
 use serde_json::{Value, json};
 
-use crate::code::CodeReport;
+use crate::agent::AgentReport;
+use crate::code::{CodeFinding, CodeReport};
 use crate::scan::ScanReport;
 
 /// What to do about a malicious package that has no clean version: upgrading is not the fix.
@@ -431,6 +432,31 @@ pub fn text(r: &ScanReport) -> String {
     s
 }
 
+/// The finding blocks shared by the code scan and the assistant configuration scan.
+fn push_code_findings(s: &mut String, findings: &[CodeFinding], show_confidence: bool) {
+    for f in findings {
+        let _ = writeln!(
+            s,
+            "\n[{}] {} {}  {}:{}{}",
+            f.severity.as_str().to_uppercase(),
+            f.rule,
+            f.cwe,
+            f.file,
+            f.line,
+            if show_confidence {
+                format!("  ({})", f.confidence)
+            } else {
+                String::new()
+            }
+        );
+        let _ = writeln!(s, "    {}", f.title);
+        if !f.snippet.is_empty() {
+            let _ = writeln!(s, "    > {}", f.snippet);
+        }
+        let _ = writeln!(s, "    fix: {}", f.advice);
+    }
+}
+
 /// Human-readable summary of a code scan.
 pub fn code_text(r: &CodeReport) -> String {
     let mut s = String::new();
@@ -440,26 +466,37 @@ pub fn code_text(r: &CodeReport) -> String {
         r.files_scanned,
         r.findings.len()
     );
-    for f in &r.findings {
-        let _ = writeln!(
-            s,
-            "\n[{}] {} {}  {}:{}",
-            f.severity.as_str().to_uppercase(),
-            f.rule,
-            f.cwe,
-            f.file,
-            f.line
-        );
-        let _ = writeln!(s, "    {}", f.title);
-        if !f.snippet.is_empty() {
-            let _ = writeln!(s, "    > {}", f.snippet);
-        }
-        let _ = writeln!(s, "    fix: {}", f.advice);
-    }
+    push_code_findings(&mut s, &r.findings, false);
     for e in &r.external {
         let _ = writeln!(s, "external {}: {} ({})", e.tool, e.status, e.detail);
     }
     for n in &r.notes {
+        let _ = writeln!(s, "note: {n}");
+    }
+    s
+}
+
+/// Human-readable summary of an assistant configuration scan.
+pub fn agent_text(r: &AgentReport) -> String {
+    let mut s = String::new();
+    let _ = writeln!(
+        s,
+        "opencraysec: {} assistant configuration file(s) read, {} finding(s)",
+        r.code.files_scanned,
+        r.code.findings.len()
+    );
+    push_code_findings(&mut s, &r.code.findings, true);
+    if r.packages_checked > 0 {
+        let _ = writeln!(
+            s,
+            "\n{} MCP server package(s) with an exact version were checked against advisory data.",
+            r.packages_checked
+        );
+    }
+    for (file, why) in &r.unchecked {
+        let _ = writeln!(s, "unchecked {file}: {why}");
+    }
+    for n in &r.code.notes {
         let _ = writeln!(s, "note: {n}");
     }
     s

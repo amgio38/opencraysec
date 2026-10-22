@@ -332,6 +332,17 @@ pub fn scan(store: &Store, root: &Path, opts: &ScanOptions) -> Result<ScanReport
     // Everything is discovered; the options only narrow what is *checked*. The full set is kept so
     // the activity log can snapshot the whole dependency state.
     let disc = opencraysec_lockfile::discover(root, None);
+    scan_discovered(store, root, disc, opts)
+}
+
+/// Checks the packages of an already built [`opencraysec_lockfile::Discovery`] against the advisory
+/// data. `root` is only the directory the report is about.
+pub(crate) fn scan_discovered(
+    store: &Store,
+    root: &Path,
+    disc: opencraysec_lockfile::Discovery,
+    opts: &ScanOptions,
+) -> Result<ScanReport, EngineError> {
     let all_packages = disc.packages.clone();
     let keep_ecosystem = |e: Ecosystem| {
         opts.ecosystems

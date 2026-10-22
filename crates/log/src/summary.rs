@@ -166,6 +166,7 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
     let scans: Vec<&&Event> = evs.iter().filter(|e| e.kind == "scan").collect();
     let latest_scan = scans.last();
     let latest_code = evs.iter().rev().find(|e| e.kind == "scan_code");
+    let latest_agent = evs.iter().rev().find(|e| e.kind == "scan_agent_config");
     let runtime_events: Vec<&&Event> = evs.iter().filter(|e| e.kind == "scan_runtime").collect();
     let latest_runtime = runtime_events.last();
     let runtime_scans = runtime_events.len();
@@ -322,7 +323,7 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
         let d = day(&e.ts).to_string();
         let slot = activity.entry(d).or_default();
         match e.kind.as_str() {
-            "scan" | "scan_code" | "scan_runtime" => slot.0 += 1,
+            "scan" | "scan_code" | "scan_agent_config" | "scan_runtime" => slot.0 += 1,
             "record_fix" => slot.1 += 1,
             "verify_fix" => slot.2 += array_of(&e.data, "resolved").len(),
             _ => {}
@@ -348,6 +349,7 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
     let install_scripts: Vec<Value> = latest_scan
         .map(|e| array_of(&e.data, "install_scripts").to_vec())
         .unwrap_or_default();
+    // A malicious package counts wherever it was found: in a lockfile, or started by an MCP server.
     let malicious_open = findings
         .iter()
         .filter(|f| {
@@ -355,7 +357,13 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
                 .and_then(|x| x.as_bool())
                 .unwrap_or(false)
         })
-        .count();
+        .count()
+        + latest_agent.map_or(0, |e| {
+            array_of(&e.data, "findings")
+                .iter()
+                .filter(|f| str_of(f, "rule").starts_with("MAL-"))
+                .count()
+        });
     let used_open = findings
         .iter()
         .filter(|f| {
@@ -384,6 +392,7 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
             "runtime_scans": runtime_scans,
             "runtime_attention": runtime_attention,
             "runtime_cves": runtime_cve_total,
+            "agent_config_issues": latest_agent.map_or(0, |e| e.data.get("total").and_then(|x| x.as_u64()).unwrap_or(0)),
             "code_suspected": latest_code.map_or(0, |e| e.data.get("total").and_then(|x| x.as_u64()).unwrap_or(0)),
             "last_scan": latest_scan.map(|e| e.ts.clone()),
             "packages_checked": latest_scan.map_or(0, |e| e.data.get("packages_checked").and_then(|x| x.as_u64()).unwrap_or(0)),
@@ -397,6 +406,16 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
         "findings": findings,
         "data_sources": latest_scan.map(|e| e.data.get("data_sources").cloned().unwrap_or(json!([]))),
         "notes": latest_scan.map(|e| scan_notes(e)),
+        "agent_config": latest_agent.map(|e| json!({
+            "ts": e.ts,
+            "files_scanned": e.data.get("files_scanned"),
+            "by_severity": e.data.get("by_severity"),
+            "packages_checked": e.data.get("packages_checked"),
+            "unchecked": e.data.get("unchecked"),
+            "home_scanned": e.data.get("home_scanned"),
+            "notes": e.data.get("notes"),
+            "findings": e.data.get("findings"),
+        })),
         "code": latest_code.map(|e| json!({
             "ts": e.ts,
             "files_scanned": e.data.get("files_scanned"),

@@ -58,7 +58,7 @@ spaced to respect NVD's limits (faster with `NVD_API_KEY`), and a scan makes at 
 
 ## Activity log and report (`log`, `web`)
 
-Events (`scan`, `scan_code`, `scan_runtime`, `plan_fix`, `verify_fix`, `record_fix`) are appended as JSON lines; there
+Events (`scan`, `scan_code`, `scan_agent_config`, `scan_runtime`, `plan_fix`, `verify_fix`, `record_fix`) are appended as JSON lines; there
 is no database, so the log can be read with `grep`/`jq` and copied around. Each scan also stores a
 snapshot of every dependency it found (all ecosystems, whatever the scan options), kept for the last
 few states per project. `record_fix` compares the current lockfiles with the newest *different*

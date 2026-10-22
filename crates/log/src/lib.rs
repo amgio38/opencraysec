@@ -26,7 +26,7 @@ pub struct Event {
     pub v: u32,
     /// RFC 3339 UTC time.
     pub ts: String,
-    /// `scan`, `scan_code`, `scan_runtime`, `plan_fix`, `verify_fix` or `record_fix`.
+    /// `scan`, `scan_code`, `scan_agent_config`, `scan_runtime`, `plan_fix`, `verify_fix` or `record_fix`.
     pub kind: String,
     /// The project path the event is about.
     pub workspace: String,

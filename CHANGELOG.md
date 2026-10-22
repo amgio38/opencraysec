@@ -7,6 +7,20 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ### Added
 
+- `scan-agent-config` (MCP tool `scan_agent_config`): checks the files that steer an AI coding assistant
+  (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.cursor/rules`, `copilot-instructions.md`,
+  `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `.claude/settings.json`, `.vscode/tasks.json`).
+  Eight rules, each with a CWE and the OWASP MCP Top 10 or LLM Top 10 entry behind it: invisible and
+  bidirectional characters, instruction-override phrases, instructions hidden in HTML comments, lines
+  that download and run code (in instruction files and in hooks, tasks and server commands), lines that
+  send secrets to a URL, MCP servers started from unpinned packages and tasks that run when a folder
+  is opened, plus the secret rules of `scan-code`. The packages an MCP server starts with an exact
+  version are checked against the advisory and malicious-package data like a lockfile entry.
+  Findings from rules are `suspected`. The matched text is never stored or printed (hidden characters
+  are named by code point), and the home directory is read only with `--include-home`, which the MCP
+  server does not offer. The result is in the dashboard and the HTML export (a panel and a number), and
+  the activity log (kind `scan_agent_config`). See `docs/AGENT-CONFIG.md`.
+- A malicious package started by an MCP server counts in the dashboard's "Malicious packages" number.
 - Install-time code. `scan` lists the packages whose lockfile entry says an install step runs code (npm
   `hasInstallScript`, lockfileVersion 2 and 3) apart from the vulnerabilities: in the text report, as
   `install_scripts` in JSON and MCP, in SARIF run properties, as a property on each CycloneDX component,

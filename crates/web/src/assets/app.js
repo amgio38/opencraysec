@@ -52,12 +52,13 @@
     clear(box);
     box.appendChild(kpi('Open findings', k.open, k.packages_checked + ' packages checked', k.open ? '' : 'good'));
     box.appendChild(kpi('Critical + high', k.open_critical_high, 'fix these first', k.open_critical_high ? 'bad' : 'good'));
-    box.appendChild(kpi('Malicious packages', k.malicious_open || 0, 'OpenSSF Malicious Packages', k.malicious_open ? 'bad' : 'good'));
+    box.appendChild(kpi('Malicious packages', k.malicious_open || 0, 'lockfiles and MCP servers', k.malicious_open ? 'bad' : 'good'));
     box.appendChild(kpi('Exploited in the wild', k.exploited_open, 'CISA KEV', k.exploited_open ? 'bad' : 'good'));
     box.appendChild(kpi('Run code at install', k.install_scripts || 0, 'review, not a vulnerability', ''));
     box.appendChild(kpi('Used by your code', k.used_in_code, 'calls an affected function', k.used_in_code ? 'bad' : ''));
     box.appendChild(kpi('Confirmed fixed', k.resolved_verified, 'verified by a re-scan', 'good'));
     box.appendChild(kpi('Changes recorded', k.recorded_fixes, 'reported by the AI'));
+    box.appendChild(kpi('Assistant config issues', k.agent_config_issues || 0, 'rule files, MCP, hooks', k.agent_config_issues ? 'bad' : ''));
     box.appendChild(kpi('Suspected code issues', k.code_suspected, 'to be confirmed'));
     box.appendChild(kpi('Runtime products to review', k.runtime_scans ? k.runtime_attention : '-', k.runtime_scans ? (k.runtime_cves + ' CVE(s) listed by NVD') : 'run scan-runtime', k.runtime_attention ? 'bad' : ''));
     box.appendChild(kpi('Scans', k.scans, 'last: ' + when(k.last_scan)));
@@ -300,6 +301,38 @@
     });
   }
 
+  function renderAgent(s) {
+    var thead = document.querySelector('#agent thead'), tbody = document.querySelector('#agent tbody');
+    var notes = $('agent-notes');
+    clear(thead); clear(tbody); clear(notes);
+    var a = s.agent_config;
+    var tr = h('tr');
+    ['Severity', 'Rule', 'CWE', 'Where', 'What to do'].forEach(function (t) { tr.appendChild(h('th', { text: t })); });
+    thead.appendChild(tr);
+    if (!a) {
+      tbody.appendChild(h('tr', null, h('td', { colspan: '5', class: 'empty', text: 'No assistant configuration scan has been run yet (opencraysec scan-agent-config, or the MCP tool scan_agent_config).' })));
+      return;
+    }
+    var list = a.findings || [];
+    if (!list.length) {
+      tbody.appendChild(h('tr', null, h('td', { colspan: '5', class: 'empty', text: 'No finding in ' + (a.files_scanned || 0) + ' assistant configuration file(s). That is not proof they are safe.' })));
+    }
+    list.forEach(function (f) {
+      tbody.appendChild(h('tr', null,
+        h('td', null, sevBadge(f.severity), f.source === 'osv' ? h('div', { class: 'sub', text: 'advisory' }) : h('div', { class: 'sub', text: 'suspected' })),
+        h('td', null, h('div', { text: f.title }), h('div', { class: 'sub mono', text: f.rule })),
+        h('td', { text: f.cwe || '-' }),
+        h('td', { class: 'mono', text: f.file + ':' + f.line }),
+        h('td', { text: f.advice || '' })));
+    });
+    var lines = [];
+    if (a.packages_checked) lines.push(a.packages_checked + ' MCP server package(s) with an exact version were checked against advisory data.');
+    (a.unchecked || []).forEach(function (u) { lines.push('unchecked ' + u[0] + ': ' + u[1]); });
+    if (a.home_scanned) lines.push('The home directory configuration was read as well.');
+    (a.notes || []).forEach(function (n) { lines.push(n); });
+    lines.forEach(function (l) { notes.appendChild(h('div', { class: 'notes', text: l })); });
+  }
+
   function renderInstalls(s) {
     var thead = document.querySelector('#installs thead'), tbody = document.querySelector('#installs tbody');
     clear(thead); clear(tbody);
@@ -388,7 +421,7 @@
       $('kpis').appendChild(h('div', { class: 'empty card', text: 'The log is empty. Run a scan (opencraysec scan, or the MCP tool scan_dependencies) and reload.' }));
       return;
     }
-    renderMeta(s); renderKpis(s); renderCharts(s); renderFixes(s); renderFindings(s); renderInstalls(s); renderRuntime(s); renderCode(s);
+    renderMeta(s); renderKpis(s); renderCharts(s); renderFixes(s); renderFindings(s); renderInstalls(s); renderRuntime(s); renderAgent(s); renderCode(s);
   }
 
   function fillWorkspaces(s, onChange) {

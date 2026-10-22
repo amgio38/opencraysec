@@ -25,9 +25,10 @@ There is no TLS: put it behind a reverse proxy if you expose it beyond a trusted
 
 ## What it shows
 
-- Eleven numbers: open findings, critical and high, malicious packages, exploited in the wild, packages
-  that run code at install, used by your code, confirmed fixed, changes recorded, suspected code issues,
-  runtime products to review, scans.
+- Twelve numbers: open findings, critical and high, malicious packages (in lockfiles and started by MCP
+  servers), exploited in the wild, packages that run code at install, used by your code, confirmed fixed,
+  changes recorded, assistant configuration issues, suspected code issues, runtime products to review,
+  scans.
 - Charts: findings over time by severity, severity now, the riskiest packages, whether your code uses
   the vulnerable packages, and daily activity. Charts use Chart.js, loaded from a CDN at a pinned
   version and checked with an integrity hash; without network access the page shows tables instead.
@@ -41,6 +42,10 @@ There is no TLS: put it behind a reverse proxy if you expose it beyond a trusted
   for a CycloneDX or SPDX file given as the path (usage is then `Unknown`: there is no source tree).
   Components of an SBOM that cannot be matched (operating-system packages, container images) appear in
   the notes at the top, never silently dropped.
+- **AI assistant configuration**: the findings of the latest `scan-agent-config`: rule, CWE, file and
+  line, what to do, and whether it is a suspected pattern or comes from published data about an MCP
+  server's package. The packages that could not be checked and the notes are listed under the table.
+  The text that matched is never in the log or the report.
 - **Install-time code**: the packages whose lockfile entry says an install step runs code, with their
   lockfile. It is a list to review, not a vulnerability. A lockfile that cannot say is named in the notes
   at the top, so an empty list is never read as "none" for it.
@@ -61,7 +66,7 @@ There is no TLS: put it behind a reverse proxy if you expose it beyond a trusted
 ## What is in the log
 
 `log/events.jsonl` under the data directory (see [CONFIGURATION.md](CONFIGURATION.md)): one JSON object
-per line with a time, the kind (`scan`, `scan_code`, `scan_runtime`, `plan_fix`, `verify_fix`,
+per line with a time, the kind (`scan`, `scan_code`, `scan_agent_config`, `scan_runtime`, `plan_fix`, `verify_fix`,
 `record_fix`), the project path, the AI client's name and a payload. It holds package names, versions,
 advisory and CVE ids, summaries, reference links and file paths. It never holds source code or secret values. Turn it off
 with `--no-log` or `OPENCRAYSEC_LOG=off`; delete the file to start over. It is not rotated.

@@ -78,6 +78,16 @@ dumps `update` already downloads, so there is no separate feed and no setting to
 - A report is evidence that someone filed it, not a verdict on your copy. Check the references on the
   finding before you act, and tell the maintainers of the data if a report is wrong.
 
+## Assistant configuration
+
+`scan-agent-config` ([AGENT-CONFIG.md](AGENT-CONFIG.md)) uses published data for one thing: the packages an
+MCP server is started from. A package with an exact version is matched against the OSV data above (and its
+malicious-package reports), exactly like a lockfile entry. Everything else it reports comes from rules,
+which are patterns, not data. Each rule names the CWE and the entry of the
+[OWASP MCP Top 10](https://owasp.org/www-project-mcp-top-10/) or the
+[OWASP Top 10 for LLM Applications](https://genai.owasp.org/llm-top-10/) (both 2025) that motivates it;
+those lists are the reasoning behind a rule, not something the tool downloads.
+
 ## How findings are ordered
 
 1. Malicious packages (OSV `MAL-` reports).
