@@ -5,6 +5,35 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ## [Unreleased]
 
+## [0.20261022.2] - 2026-10-22
+
+Completes `scan-runtime`, which 0.20261022.1 shipped without a place in the report: a runtime scan was not
+written to the activity log, so the dashboard and the HTML report never showed it.
+
+### Added
+
+- Every `scan-runtime` run and every `scan_runtime` call is recorded in the activity log (kind
+  `scan_runtime`) under the project it ran for: the CLI's current directory, or the MCP server's workspace.
+  `--no-log` and `OPENCRAYSEC_LOG=off` still turn it off, like every other scan.
+- The dashboard and the HTML export have a **Runtime products** panel and a "Runtime products to review"
+  number. The panel shows, per product and version, whether the release line is end of life or behind its
+  newest patch and, when NVD was asked, the CVEs NVD lists with CVSS, CISA's exploited flag and the
+  affected range. All runtime scans of a project count: the newest verdict for each product and version
+  is shown, and a CVE list from an earlier scan is kept when a later one did not ask NVD.
+
+### Fixed
+
+- A CVSS or EPSS score in `scan-runtime --format json`, in the MCP result and in the log could print as
+  `9.800000190734863`. Scores are now written as `9.8` and `0.4`.
+- With `--nvd`, the notes under a runtime scan said "This checks release lines, not CVEs" next to a list of
+  CVEs. The note now says what each verdict means and that the listed CVEs are NVD's.
+
+### Documentation
+
+- `README.md` listed only OSV, CISA, FIRST and MITRE as download sources and `--enrich-nvd` as the only NVD
+  use; it now also names endoflife.date, php.net and `scan-runtime --nvd`.
+- `docs/DASHBOARD.md`, `docs/ARCHITECTURE.md` and `docs/TOOLS.md` describe the new event and panel.
+
 ## [0.20261022.1] - 2026-10-22
 
 Adds checks for what no lockfile lists: the interpreter and servers an application runs on (a flaw in PHP

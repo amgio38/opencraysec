@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.20261022.1"
+version = "0.20261022.2"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
@@ -25,14 +25,14 @@ categories = ["development-tools", "command-line-utilities"]
 keywords = ["security", "cve", "vulnerability", "mcp", "llm"]
 
 [workspace.dependencies]
-opencraysec-core = { path = "crates/core", version = "0.20261022.1" }
-opencraysec-lockfile = { path = "crates/lockfile", version = "0.20261022.1" }
-opencraysec-runtime = { path = "crates/runtime", version = "0.20261022.1" }
-opencraysec-db = { path = "crates/db", version = "0.20261022.1" }
-opencraysec-engine = { path = "crates/engine", version = "0.20261022.1" }
-opencraysec-log = { path = "crates/log", version = "0.20261022.1" }
-opencraysec-web = { path = "crates/web", version = "0.20261022.1" }
-opencraysec-mcp = { path = "crates/mcp", version = "0.20261022.1" }
+opencraysec-core = { path = "crates/core", version = "0.20261022.2" }
+opencraysec-lockfile = { path = "crates/lockfile", version = "0.20261022.2" }
+opencraysec-runtime = { path = "crates/runtime", version = "0.20261022.2" }
+opencraysec-db = { path = "crates/db", version = "0.20261022.2" }
+opencraysec-engine = { path = "crates/engine", version = "0.20261022.2" }
+opencraysec-log = { path = "crates/log", version = "0.20261022.2" }
+opencraysec-web = { path = "crates/web", version = "0.20261022.2" }
+opencraysec-mcp = { path = "crates/mcp", version = "0.20261022.2" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = { version = "1", default-features = false, features = ["parse", "std", "serde"] }
