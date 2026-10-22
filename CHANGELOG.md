@@ -42,6 +42,13 @@ itself, such as CVE-2026-109618 and CVE-2026-109619, was invisible to every earl
   libraries, where a CPE name does not identify a package, and not for runtime products, where it does.
 - The NVD score and weakness reader is shared by `--enrich-nvd` and `--nvd`; no behaviour change.
 
+### Security
+
+- `rustls-webpki` 0.103.15 to 0.103.16 (RUSTSEC-2026-0382, certificate verification could accept distrusted
+  intermediates) and `webpki-roots` 1.0.9 to 1.0.10 (RUSTSEC-2026-0381, a distrusted emSign root). Both
+  are reached through the HTTPS client used for the dataset downloads; the lockfile moved within the same
+  compatible versions, and `cargo deny` passes again.
+
 ### Documentation
 
 - `SECURITY.md` says what `scan-runtime` runs (a fixed list of version commands, no shell, a time limit and

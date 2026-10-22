@@ -98,7 +98,7 @@ the others are development or build-time tools that are not distributed.
 | rustix | 1.1.5 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | MIT | no | <https://github.com/bytecodealliance/rustix> |
 | rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT | MIT | yes | <https://github.com/rustls/rustls> |
 | rustls-pki-types | 1.15.1 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/rustls/pki-types> |
-| rustls-webpki | 0.103.15 | ISC | ISC | yes | <https://github.com/rustls/webpki> |
+| rustls-webpki | 0.103.16 | ISC | ISC | yes | <https://github.com/rustls/webpki> |
 | serde | 1.0.229 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/serde-rs/serde> |
 | serde_core | 1.0.229 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/serde-rs/serde> |
 | serde_derive | 1.0.229 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/serde-rs/serde> |
@@ -130,7 +130,7 @@ the others are development or build-time tools that are not distributed.
 | utf8_iter | 1.0.4 | Apache-2.0 OR MIT | MIT | yes | <https://github.com/hsivonen/utf8_iter> |
 | version_check | 0.9.5 | MIT/Apache-2.0 | MIT | no | <https://github.com/SergioBenitez/version_check> |
 | wasi | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | MIT | yes | <https://github.com/bytecodealliance/wasi> |
-| webpki-roots | 1.0.9 | CDLA-Permissive-2.0 | CDLA-Permissive-2.0 | yes | <https://github.com/rustls/webpki-roots> |
+| webpki-roots | 1.0.10 | CDLA-Permissive-2.0 | CDLA-Permissive-2.0 | yes | <https://github.com/rustls/webpki-roots> |
 | windows-link | 0.2.1 | MIT OR Apache-2.0 | MIT | no | <https://github.com/microsoft/windows-rs> |
 | windows-sys | 0.52.0 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/microsoft/windows-rs> |
 | windows-sys | 0.61.2 | MIT OR Apache-2.0 | MIT | no | <https://github.com/microsoft/windows-rs> |

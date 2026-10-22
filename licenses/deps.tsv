@@ -65,7 +65,7 @@ ring	0.17.14	Apache-2.0 AND ISC	Apache-2.0 AND ISC	licenses/Apache-2.0.txt,licen
 rustix	1.1.5	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	MIT	licenses/MIT.txt
 rustls	0.23.46	Apache-2.0 OR ISC OR MIT	MIT	licenses/MIT.txt
 rustls-pki-types	1.15.1	MIT OR Apache-2.0	MIT	licenses/MIT.txt
-rustls-webpki	0.103.15	ISC	ISC	licenses/ISC.txt
+rustls-webpki	0.103.16	ISC	ISC	licenses/ISC.txt
 serde	1.0.229	MIT OR Apache-2.0	MIT	licenses/MIT.txt
 serde_core	1.0.229	MIT OR Apache-2.0	MIT	licenses/MIT.txt
 serde_derive	1.0.229	MIT OR Apache-2.0	MIT	licenses/MIT.txt
@@ -97,7 +97,7 @@ utf8-zero	0.8.1	MIT OR Apache-2.0	MIT	licenses/MIT.txt
 utf8_iter	1.0.4	Apache-2.0 OR MIT	MIT	licenses/MIT.txt
 version_check	0.9.5	MIT/Apache-2.0	MIT	licenses/MIT.txt
 wasi	0.11.1+wasi-snapshot-preview1	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	MIT	licenses/MIT.txt
-webpki-roots	1.0.9	CDLA-Permissive-2.0	CDLA-Permissive-2.0	licenses/CDLA-Permissive-2.0.txt
+webpki-roots	1.0.10	CDLA-Permissive-2.0	CDLA-Permissive-2.0	licenses/CDLA-Permissive-2.0.txt
 windows-link	0.2.1	MIT OR Apache-2.0	MIT	licenses/MIT.txt
 windows-sys	0.52.0	MIT OR Apache-2.0	MIT	licenses/MIT.txt
 windows-sys	0.61.2	MIT OR Apache-2.0	MIT	licenses/MIT.txt
