@@ -72,7 +72,9 @@ pub fn ingest_zip(eco: Ecosystem, zip_path: &Path, out_path: &Path) -> Result<In
 pub fn update_osv(store: &Store, eco: Ecosystem) -> Result<EcoMeta, DbError> {
     fs::create_dir_all(store.osv_dir())?;
     let zip_path = store.osv_dir().join(format!("{}.zip.tmp", eco.osv_name()));
-    let url = format!("{}/{}/all.zip", store.endpoints().osv_dump, eco.osv_name());
+    // `GitHub Actions` has a space in its name, which a URL path must carry as %20.
+    let segment = eco.osv_name().replace(' ', "%20");
+    let url = format!("{}/{segment}/all.zip", store.endpoints().osv_dump);
     {
         let mut reader = net::open(&url)?;
         let mut f = BufWriter::new(fs::File::create(&zip_path)?);

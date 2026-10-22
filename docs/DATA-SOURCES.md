@@ -9,6 +9,7 @@ or the NVD, by CISA, by FIRST, by MITRE, by endoflife.date or by php.net.
 | --- | --- | --- |
 | [OSV](https://osv.dev) | Which package versions are affected, fixed versions, severity vectors, CWE ids, affected functions | Per-ecosystem dumps (`osv-vulnerabilities.storage.googleapis.com/<ecosystem>/all.zip`) with `update`; the OSV API (`api.osv.dev`) when an ecosystem has no local data |
 | GitHub Advisory Database, RustSec, Go vulnerability database, PHP security advisories, PyPA | The advisories OSV aggregates | Through OSV (not queried separately) |
+| OSV `GitHub Actions` ecosystem | Which releases of an action are affected, from the GitHub Advisory Database (CC-BY 4.0) | The same per-ecosystem dump as the others: `update actions`, or `update --for .` in a project with workflows |
 | [OpenSSF Malicious Packages](https://github.com/ossf/malicious-packages) (Apache-2.0) | Packages reported to contain malicious code (ids `MAL-...`) | Through OSV: the same per-ecosystem dumps carry them, so `update` needs no extra download |
 | [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Whether a CVE is exploited in the wild (ranks first) | `update` |
 | [FIRST EPSS](https://www.first.org/epss/) | Probability of exploitation in the next 30 days (ranks next) | `update` |
@@ -77,6 +78,29 @@ dumps `update` already downloads, so there is no separate feed and no setting to
   ecosystem; if a dataset holds none, the scan says so in `notes` instead of looking clean.
 - A report is evidence that someone filed it, not a verdict on your copy. Check the references on the
   finding before you act, and tell the maintainers of the data if a report is wrong.
+
+## GitHub Actions
+
+An action in a workflow is a dependency, and OSV publishes the advisories for them as an ecosystem of
+their own, `GitHub Actions`, filled from the GitHub Advisory Database (whose entries are CC-BY 4.0; OSV's
+data page lists the licence of each source). The dump is small: on 2026-10-22 it held 56 advisories, about
+100 KB, so it is one of the cheap ones to download.
+
+- The package name is `owner/repo`. OSV keeps the case it was given and GitHub does not distinguish case,
+  so names are compared in lower case. A few entries name a subfolder or are a whole URL (OSV's data is not
+  uniform there); a workflow is matched by repository, so those are missed.
+- Versions are mostly `X.Y.Z`, or `0` for "from the start". Some ranges use a bare major (`5` to `6`),
+  which is read as `5.0.0` to `6.0.0`. Two entries on that day used commit hashes (a `GIT` range), which a
+  release tag cannot be compared with, so they never match.
+- A workflow names its action by a tag, a commit SHA or a branch. Only a full release tag (`v4.1.2`) is a
+  version. The others are listed as not checked: see [LANGUAGES.md](LANGUAGES.md#github-actions-workflows).
+- This is thin coverage compared with npm or PyPI: advisories exist only for actions someone reported. No
+  advisory means none is known, not that an action is safe.
+
+The dangerous-pattern rules for workflows are not data. Their basis is GitHub's security hardening guide,
+GitHub Security Lab's articles on untrusted input and pwn requests, and the
+[OWASP Top 10 CI/CD Security Risks](https://owasp.org/www-project-top-10-ci-cd-security-risks/); see
+[LANGUAGES.md](LANGUAGES.md#github-actions-workflows).
 
 ## Assistant configuration
 

@@ -15,16 +15,19 @@ pub enum Ecosystem {
     Go,
     /// Python packages (PyPI).
     PyPI,
+    /// GitHub Actions used by workflows (`uses: owner/repo@ref`).
+    GitHubActions,
 }
 
 impl Ecosystem {
     /// Every supported ecosystem.
-    pub const ALL: [Ecosystem; 5] = [
+    pub const ALL: [Ecosystem; 6] = [
         Ecosystem::CratesIo,
         Ecosystem::Npm,
         Ecosystem::Packagist,
         Ecosystem::Go,
         Ecosystem::PyPI,
+        Ecosystem::GitHubActions,
     ];
 
     /// The ecosystem name used by OSV (`affected[].package.ecosystem`).
@@ -35,6 +38,16 @@ impl Ecosystem {
             Ecosystem::Packagist => "Packagist",
             Ecosystem::Go => "Go",
             Ecosystem::PyPI => "PyPI",
+            Ecosystem::GitHubActions => "GitHub Actions",
+        }
+    }
+
+    /// The name to type on the command line (`opencraysec update NAME`): the OSV name, except for
+    /// `GitHub Actions`, whose OSV name has a space in it.
+    pub fn cli_name(self) -> &'static str {
+        match self {
+            Ecosystem::GitHubActions => "actions",
+            other => other.osv_name(),
         }
     }
 
@@ -52,6 +65,9 @@ impl Ecosystem {
             "packagist" | "composer" | "php" => Some(Ecosystem::Packagist),
             "go" | "golang" => Some(Ecosystem::Go),
             "pypi" | "python" | "pip" => Some(Ecosystem::PyPI),
+            "github actions" | "github-actions" | "githubactions" | "actions" | "gha" => {
+                Some(Ecosystem::GitHubActions)
+            }
             _ => None,
         }
     }
@@ -59,7 +75,8 @@ impl Ecosystem {
     /// Normalises a package name the way the advisory databases key it.
     pub fn normalize_name(self, name: &str) -> String {
         match self {
-            Ecosystem::Packagist => name.to_ascii_lowercase(),
+            // GitHub treats `Owner/Repo` and `owner/repo` as one repository.
+            Ecosystem::Packagist | Ecosystem::GitHubActions => name.to_ascii_lowercase(),
             Ecosystem::PyPI => {
                 let mut out = String::with_capacity(name.len());
                 let mut prev_sep = false;
@@ -388,5 +405,40 @@ mod tests {
         );
         f.malicious = true;
         assert_eq!(serde_json::to_value(&f).expect("json")["malicious"], true);
+    }
+
+    #[test]
+    fn github_actions_is_an_ecosystem_with_a_spaced_osv_name_and_case_blind_names() {
+        assert_eq!(Ecosystem::ALL.len(), 6);
+        assert_eq!(Ecosystem::GitHubActions.osv_name(), "GitHub Actions");
+        assert_eq!(
+            Ecosystem::from_osv_name("GitHub Actions"),
+            Some(Ecosystem::GitHubActions)
+        );
+        for alias in [
+            "actions",
+            "gha",
+            "github-actions",
+            "GitHub Actions",
+            "githubactions",
+            "GHA",
+        ] {
+            assert_eq!(
+                Ecosystem::parse(alias),
+                Some(Ecosystem::GitHubActions),
+                "{alias}"
+            );
+        }
+        assert_eq!(
+            Ecosystem::GitHubActions.normalize_name("Actions/Check-Out"),
+            "actions/check-out"
+        );
+        assert_eq!(Ecosystem::Npm.normalize_name("Keeps-Case"), "Keeps-Case");
+        // The name to type after `update`: always something the command line parses back.
+        for e in Ecosystem::ALL {
+            assert_eq!(Ecosystem::parse(e.cli_name()), Some(e), "{}", e.cli_name());
+        }
+        assert_eq!(Ecosystem::GitHubActions.cli_name(), "actions");
+        assert_eq!(Ecosystem::PyPI.cli_name(), "PyPI");
     }
 }

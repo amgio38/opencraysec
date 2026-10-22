@@ -55,6 +55,14 @@ fn scan_notes(e: &Event) -> Value {
             out.push(Value::String(format!("{label} {file}: {why}")));
         }
     }
+    for pair in array_of(&e.data, "actions_unchecked") {
+        if let (Some(file), Some(why)) = (
+            pair.get(0).and_then(Value::as_str),
+            pair.get(1).and_then(Value::as_str),
+        ) {
+            out.push(Value::String(format!("actions not checked {file}: {why}")));
+        }
+    }
     for pair in array_of(&e.data, "install_scripts_unknown") {
         if let (Some(file), Some(why)) = (
             pair.get(0).and_then(Value::as_str),

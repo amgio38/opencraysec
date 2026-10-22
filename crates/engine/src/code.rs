@@ -882,6 +882,9 @@ pub fn scan_code(root: &Path, opts: &CodeOptions) -> Result<CodeReport, EngineEr
     for (path, rel, lang) in &files {
         if let Ok(text) = fs::read_to_string(path) {
             scan_text(rel, Lang2(*lang), &text, &mut findings);
+            if opencraysec_lockfile::workflow::is_workflow_path(path) {
+                crate::gha::scan_workflow(rel, &text, &mut findings);
+            }
         }
     }
     let mut notes = vec![

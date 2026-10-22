@@ -35,7 +35,7 @@ const DEFAULT_LIMIT: usize = 50;
 /// Tool catalogue for `tools/list`.
 pub fn list() -> Value {
     let path = json!({ "type": "string", "description": "Directory or lockfile to check, relative to the workspace. Default: the workspace root." });
-    let ecos = json!({ "type": "array", "items": { "type": "string" }, "description": "Limit to ecosystems: rust, js, php, go, python (or crates.io, npm, Packagist, Go, PyPI)." });
+    let ecos = json!({ "type": "array", "items": { "type": "string" }, "description": "Limit to ecosystems: rust, js, php, go, python, actions (or crates.io, npm, Packagist, Go, PyPI, GitHub Actions)." });
     let common = |extra: Value| {
         let mut props = json!({
             "path": path, "ecosystems": ecos,
@@ -55,7 +55,7 @@ pub fn list() -> Value {
     json!([
         {
             "name": "scan_dependencies",
-            "description": "Check the project's lockfiles (Cargo.lock, package-lock.json, yarn.lock, pnpm-lock.yaml, composer.lock, go.mod, poetry.lock, uv.lock, Pipfile.lock, requirements.txt) against current public vulnerability data. Findings are ranked: known-exploited, then EPSS, then CVSS. Read `notes` for anything not covered.",
+            "description": "Check the project's lockfiles (Cargo.lock, package-lock.json, yarn.lock, pnpm-lock.yaml, composer.lock, go.mod, poetry.lock, uv.lock, Pipfile.lock, requirements.txt, and the actions in .github/workflows) against current public vulnerability data. Findings are ranked: known-exploited, then EPSS, then CVSS. Read `notes` for anything not covered.",
             "inputSchema": { "type": "object", "properties": common(json!({ "limit": { "type": "integer", "description": "Max findings returned (default 50)." } })) },
             "annotations": { "readOnlyHint": true, "openWorldHint": true }
         },

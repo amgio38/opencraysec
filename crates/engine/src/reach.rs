@@ -593,6 +593,13 @@ pub fn annotate(base: &Path, findings: &mut [Finding], notes: &mut Vec<String>) 
             Ecosystem::Npm => js_check(tree, name),
             Ecosystem::Packagist => php_check(tree, &f.package.name),
             Ecosystem::PyPI => python_check(tree, name),
+            Ecosystem::GitHubActions => Reachability {
+                level: "unknown".into(),
+                evidence: vec![],
+                note:
+                    "A GitHub Action runs when its workflow does; there is no import to look for."
+                        .into(),
+            },
         };
         f.reachability = Some(r);
     }

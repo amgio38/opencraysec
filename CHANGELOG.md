@@ -7,6 +7,18 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ### Added
 
+- GitHub Actions. A workflow in `.github/workflows` is read for its `uses:` lines, and each action is
+  checked against the OSV `GitHub Actions` data (the GitHub Advisory Database): `update actions`, or
+  `update --for .` in a project with workflows, downloads it (about 100 KB). A full release tag is
+  matched, by repository and without regard to case. A commit SHA, a floating tag and a branch name no
+  release, so they are listed as `actions not checked` in the text report, the JSON, SARIF and CycloneDX
+  notes, the activity log and the dashboard and HTML export, and, unlike an unpinned requirement, they do
+  not make a result incomplete. A fix is words for a person (change `uses:` to the fixed tag or its SHA),
+  never a command. `--ecosystem actions` limits a scan to them.
+- `scan-code` rules for workflows (`gha-script-injection`, `gha-pwn-request`, `gha-workflow-run-artifact`,
+  `gha-unpinned-action`, `gha-broad-permissions`), each with its CWE, the OWASP CI/CD Top 10 entry that fits
+  it, and the GitHub guidance or GitHub Security Lab article it rests on, quoted in
+  `docs/LANGUAGES.md` together with what each rule misses. A test keeps every rule documented.
 - `scan-code` rules for code that talks to an AI model, each with a CWE and, where there is one, the
   OWASP Top 10 for LLM Applications (2025) entry: provider keys (`secret-anthropic-key`,
   `secret-huggingface-token`, `secret-google-api-key`; prefixes from the providers' own documentation,

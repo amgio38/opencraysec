@@ -68,7 +68,7 @@ struct ScanArgs {
     /// Directory or lockfile to check.
     #[arg(default_value = ".")]
     path: PathBuf,
-    /// Limit to ecosystems (rust, js, php, go, python). Repeatable.
+    /// Limit to ecosystems (rust, js, php, go, python, actions). Repeatable.
     #[arg(long = "ecosystem", short = 'e')]
     ecosystems: Vec<String>,
     /// Skip development-only dependencies.
@@ -166,7 +166,7 @@ enum Cmd {
     },
     /// Download or refresh advisory data.
     Update {
-        /// Ecosystems to download (rust, js, php, go, python).
+        /// Ecosystems to download (rust, js, php, go, python, actions).
         ecosystems: Vec<String>,
         /// Download every ecosystem (npm is several hundred MB).
         #[arg(long)]
@@ -281,8 +281,9 @@ fn parse_ecosystems(names: &[String]) -> Result<Option<Vec<Ecosystem>>, String> 
     names
         .iter()
         .map(|n| {
-            Ecosystem::parse(n)
-                .ok_or_else(|| format!("unknown ecosystem {n:?} (use rust, js, php, go, python)"))
+            Ecosystem::parse(n).ok_or_else(|| {
+                format!("unknown ecosystem {n:?} (use rust, js, php, go, python, actions)")
+            })
         })
         .collect::<Result<Vec<_>, _>>()
         .map(Some)

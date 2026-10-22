@@ -8,6 +8,7 @@ pub mod code;
 mod code_ai;
 pub mod explain;
 pub mod fix;
+mod gha;
 pub mod reach;
 pub mod report;
 pub mod runtime;

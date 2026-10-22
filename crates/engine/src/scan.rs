@@ -85,6 +85,10 @@ pub struct ScanReport {
     pub install_scripts: Vec<Package>,
     /// Lockfiles that do record install scripts: an empty list is only "none" for these.
     pub install_scripts_checked: Vec<String>,
+    /// Workflow files with actions that cannot be matched to a release (pinned by commit SHA, on a
+    /// floating tag or on a branch), with which. They are not "clean": they were not checked, but
+    /// pinning by SHA is the recommended practice, so they do not make the result incomplete.
+    pub actions_unchecked: Vec<(String, String)>,
     /// Lockfiles that cannot say which packages run code when installed, with why. A package in
     /// them is not "free of install scripts": it is unknown.
     pub install_scripts_unknown: Vec<(String, String)>,
@@ -362,6 +366,11 @@ pub(crate) fn scan_discovered(
     } else {
         Vec::new()
     };
+    let actions_unchecked: Vec<(String, String)> = if keep_ecosystem(Ecosystem::GitHubActions) {
+        disc.actions_unmatched.clone()
+    } else {
+        Vec::new()
+    };
     let install_scripts_unknown: Vec<(String, String)> = disc
         .install_scripts_unknown
         .iter()
@@ -427,12 +436,14 @@ pub(crate) fn scan_discovered(
             let meta = store.meta(eco);
             src.malicious_records = meta.as_ref().and_then(|m| m.malicious);
             src.updated_at = meta.map(|m| m.updated_at);
-            if src.malicious_records == Some(0) {
+            // Malicious-package reports are about packages in a registry; an action is not one,
+            // so an empty count there says nothing.
+            if src.malicious_records == Some(0) && eco != Ecosystem::GitHubActions {
                 notes.push(format!(
                     "{}: the local dataset holds no malicious-package (MAL-) reports, so a malicious \
                      package would not be reported here. Run `opencraysec update {}`.",
                     eco.osv_name(),
-                    eco.osv_name()
+                    eco.cli_name()
                 ));
             }
         } else if !opts.offline {
@@ -457,13 +468,13 @@ pub(crate) fn scan_discovered(
                 "{}: no local data, so package names and versions were sent to api.osv.dev. \
                  Run `opencraysec update {}` for offline scans.",
                 eco.osv_name(),
-                eco.osv_name()
+                eco.cli_name()
             ));
         } else {
             notes.push(format!(
                 "{}: NOT scanned (offline and no local data). Run `opencraysec update {}`.",
                 eco.osv_name(),
-                eco.osv_name()
+                eco.cli_name()
             ));
         }
         sources.push(src);
@@ -540,6 +551,7 @@ pub(crate) fn scan_discovered(
         findings: merged,
         install_scripts,
         install_scripts_checked,
+        actions_unchecked,
         install_scripts_unknown,
         packages,
         all_packages,
@@ -955,6 +967,169 @@ mod tests {
         assert!(
             text.contains("not determined for package-lock.json"),
             "{text}"
+        );
+    }
+
+    fn actions_store(dir: &Path) -> Store {
+        let store = Store::at(dir.join("data"));
+        let recs = [
+            r#"{"id":"GHSA-act-1","summary":"Code injection in vuln/action",
+              "affected":[{"package":{"ecosystem":"GitHub Actions","name":"Vuln/Action"},
+                "ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"1.2.0"}]}]}]}"#,
+            r#"{"id":"GHSA-act-2","summary":"Leak in acme/major",
+              "affected":[{"package":{"ecosystem":"GitHub Actions","name":"acme/major"},
+                "ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"5"},{"fixed":"6"}]}]}]}"#,
+        ];
+        let lines: Vec<String> = recs
+            .iter()
+            .map(|r| serde_json::from_str::<OsvRecord>(r).expect("json"))
+            .filter_map(|r| opencraysec_db::encode_line(Ecosystem::GitHubActions, &r).expect("enc"))
+            .collect();
+        fs::create_dir_all(dir.join("data/osv")).expect("mkdir");
+        fs::write(
+            dir.join("data/osv/GitHub Actions.jsonl"),
+            lines.join("\n") + "\n",
+        )
+        .expect("w");
+        fs::write(
+            dir.join("data/osv/GitHub Actions.meta.json"),
+            r#"{"updated_at":"t","records":2,"malicious":0}"#,
+        )
+        .expect("w");
+        store
+    }
+
+    fn workflow_project(dir: &Path) -> std::path::PathBuf {
+        let proj = dir.join("wf");
+        fs::create_dir_all(proj.join(".github/workflows")).expect("mkdir");
+        fs::write(
+            proj.join(".github/workflows/ci.yml"),
+            concat!(
+                "jobs:\n  a:\n    steps:\n",
+                "      - uses: vuln/action@v1.0.0\n",
+                "      - uses: vuln/action@v1.2.0\n",
+                "      - uses: acme/major@v5.3.1\n",
+                "      - uses: acme/major@v6.0.0\n",
+                "      - uses: other/sha@0123456789abcdef0123456789abcdef01234567\n",
+                "      - uses: other/floating@v4\n",
+                "      - uses: other/branch@main\n",
+                "      - uses: ./local\n",
+            ),
+        )
+        .expect("w");
+        proj
+    }
+
+    #[test]
+    fn a_workflows_actions_are_checked_by_release_and_the_rest_are_disclosed_not_hidden() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let store = actions_store(dir.path());
+        let proj = workflow_project(dir.path());
+        let opts = ScanOptions {
+            offline: true,
+            ..ScanOptions::default()
+        };
+        let r = scan(&store, &proj, &opts).expect("scan");
+        let found: Vec<(&str, &str, &str)> = r
+            .findings
+            .iter()
+            .map(|f| {
+                (
+                    f.id.as_str(),
+                    f.package.name.as_str(),
+                    f.package.version.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            vec![
+                ("GHSA-act-2", "acme/major", "5.3.1"),
+                ("GHSA-act-1", "vuln/action", "1.0.0")
+            ],
+            "the fixed releases are clean, the older ones are not; the name's case does not matter"
+        );
+        assert!(
+            r.findings
+                .iter()
+                .all(|f| f.package.ecosystem == Ecosystem::GitHubActions)
+        );
+        assert_eq!(r.packages_checked, 4);
+        assert_eq!(r.data_sources[0].ecosystem, "GitHub Actions");
+        // The three references that name no release are disclosed, once per file.
+        assert_eq!(r.actions_unchecked.len(), 1);
+        assert_eq!(r.actions_unchecked[0].0, ".github/workflows/ci.yml");
+        assert!(r.actions_unchecked[0].1.starts_with(
+            "3 action(s) (1 pinned by commit SHA, 1 on a floating tag, 1 on a branch)"
+        ));
+        // ... without making the result incomplete: pinning by SHA is what is recommended.
+        assert!(r.unchecked.is_empty());
+        assert!(!r.is_incomplete(), "{:?}", r.notes);
+        assert!(r.install_scripts_unknown.is_empty());
+        assert!(
+            !r.notes.iter().any(|n| n.contains("MAL-")),
+            "an empty malicious-package count means nothing for actions: {:?}",
+            r.notes
+        );
+        let text = crate::report::text(&r);
+        assert!(
+            text.contains("actions not checked .github/workflows/ci.yml: 3 action(s)"),
+            "{text}"
+        );
+        assert!(text.contains("vuln/action@1.0.0"), "{text}");
+        // The scan options narrow it like any other ecosystem.
+        let rust_only = ScanOptions {
+            offline: true,
+            ecosystems: Some(vec![Ecosystem::CratesIo]),
+            ..ScanOptions::default()
+        };
+        let none = scan(&store, &proj, &rust_only).expect("scan");
+        assert!(none.findings.is_empty() && none.actions_unchecked.is_empty());
+        // The fix plan is words for a person, never a command that edits the file.
+        let plan = crate::fix::plan_fix(&r.findings, Some("vuln/action"));
+        assert_eq!(plan.steps.len(), 1);
+        assert!(plan.steps[0].commands.is_empty());
+        assert!(
+            plan.steps[0].note.contains("Edit .github/workflows/ci.yml"),
+            "{}",
+            plan.steps[0].note
+        );
+        assert!(
+            plan.steps[0].note.contains("uses: vuln/action@v1.2.0"),
+            "{}",
+            plan.steps[0].note
+        );
+    }
+
+    #[test]
+    fn without_actions_data_a_workflow_is_not_scanned_and_says_so() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let store = Store::at(dir.path().join("empty"));
+        let proj = workflow_project(dir.path());
+        let opts = ScanOptions {
+            offline: true,
+            ..ScanOptions::default()
+        };
+        let r = scan(&store, &proj, &opts).expect("scan");
+        assert!(r.findings.is_empty());
+        assert_eq!(r.data_sources[0].mode, "none");
+        assert!(
+            r.notes
+                .iter()
+                .any(|n| n.contains("GitHub Actions: NOT scanned")),
+            "{:?}",
+            r.notes
+        );
+        assert!(
+            r.notes
+                .iter()
+                .any(|n| n.contains("Run `opencraysec update actions`")),
+            "the command to type must be one the command line accepts: {:?}",
+            r.notes
+        );
+        assert!(
+            r.unscanned(),
+            "a gate must not pass on a workflow that was not checked"
         );
     }
 

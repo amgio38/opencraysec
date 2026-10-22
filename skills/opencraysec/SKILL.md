@@ -1,6 +1,6 @@
 ---
 name: opencraysec
-description: Check a project for known vulnerable dependencies against today's public advisories (OSV, CISA KEV, EPSS) across Rust, JS/TS, PHP, Go and Python, then plan and verify fixes. Use when asked about security, CVEs, vulnerable or outdated dependencies, `npm audit`/`cargo audit` style checks, before releases, or after adding dependencies.
+description: Check a project for known vulnerable dependencies against today's public advisories (OSV, CISA KEV, EPSS) across Rust, JS/TS, PHP, Go, Python and GitHub Actions workflows, then plan and verify fixes. Use when asked about security, CVEs, vulnerable or outdated dependencies, `npm audit`/`cargo audit` style checks, before releases, or after adding dependencies.
 ---
 
 # opencraysec

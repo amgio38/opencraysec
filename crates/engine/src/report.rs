@@ -59,6 +59,10 @@ pub fn purl(p: &Package) -> String {
             format!("pkg:golang/{name}@v{version}")
         }
         Ecosystem::PyPI => format!("pkg:pypi/{}@{version}", enc(&p.name)),
+        Ecosystem::GitHubActions => {
+            let name = p.name.split('/').map(enc).collect::<Vec<_>>().join("/");
+            format!("pkg:github/{name}@{version}")
+        }
     }
 }
 
@@ -162,6 +166,7 @@ fn disclosure(r: &ScanReport) -> Value {
         "skipped": r.skipped.iter().map(|(f, why)| json!({ "file": f, "reason": why })).collect::<Vec<_>>(),
         "unchecked": r.unchecked.iter().map(|(f, why)| json!({ "file": f, "reason": why })).collect::<Vec<_>>(),
         "lockfiles": r.lockfiles,
+        "actionsUnchecked": r.actions_unchecked.iter().map(|(f, why)| json!({ "file": f, "reason": why })).collect::<Vec<_>>(),
         "installScripts": {
             "checkedLockfiles": r.install_scripts_checked,
             "packages": r.install_scripts.iter().map(|p| json!({ "purl": purl(p), "name": p.name, "version": p.version, "file": p.source })).collect::<Vec<_>>(),
@@ -213,6 +218,11 @@ fn disclosure_lines(r: &ScanReport) -> Vec<String> {
         r.install_scripts_unknown
             .iter()
             .map(|(f, why)| format!("install-time code not determined for {f}: {why}")),
+    );
+    out.extend(
+        r.actions_unchecked
+            .iter()
+            .map(|(f, why)| format!("actions not checked {f}: {why}")),
     );
     for d in &r.data_sources {
         out.push(match (d.mode.as_str(), &d.updated_at) {
@@ -409,6 +419,9 @@ pub fn text(r: &ScanReport) -> String {
         );
     }
     s.push_str(&install_scripts_text(r));
+    for (file, why) in &r.actions_unchecked {
+        let _ = writeln!(s, "actions not checked {file}: {why}");
+    }
     for (file, why) in &r.skipped {
         let _ = writeln!(s, "skipped {file}: {why}");
     }
@@ -593,6 +606,7 @@ mod tests {
             informational_omitted: 0,
             install_scripts: vec![],
             install_scripts_checked: vec![],
+            actions_unchecked: vec![],
             install_scripts_unknown: vec![],
             findings: vec![Finding {
                 id: "GHSA-1".into(),
@@ -767,6 +781,45 @@ mod tests {
         );
         let r = malicious_sample();
         assert!(!text(&r).contains("its lockfile entry says"));
+    }
+
+    #[test]
+    fn actions_that_could_not_be_checked_are_named_in_every_format() {
+        let mut r = sample();
+        r.actions_unchecked = vec![(
+            ".github/workflows/ci.yml".into(),
+            "2 action(s) (2 pinned by commit SHA) name no release version".into(),
+        )];
+        let t = text(&r);
+        assert!(
+            t.contains("actions not checked .github/workflows/ci.yml: 2 action(s)"),
+            "{t}"
+        );
+        let s = sarif(&r);
+        assert_eq!(
+            s["runs"][0]["properties"]["actionsUnchecked"][0]["file"],
+            ".github/workflows/ci.yml"
+        );
+        let notes = s["runs"][0]["invocations"][0]["toolExecutionNotifications"].to_string();
+        assert!(
+            notes.contains("actions not checked .github/workflows/ci.yml"),
+            "{notes}"
+        );
+        let none = text(&sample());
+        assert!(!none.contains("actions not checked"));
+        // An action is a package of its own kind, with its own package URL.
+        let mut a = sample();
+        a.packages = vec![Package {
+            ecosystem: Ecosystem::GitHubActions,
+            name: "github/codeql-action".into(),
+            version: "v3.25.0".into(),
+            source: ".github/workflows/ci.yml".into(),
+            dev: false,
+        }];
+        assert_eq!(
+            cyclonedx(&a)["components"][0]["purl"],
+            "pkg:github/github/codeql-action@3.25.0"
+        );
     }
 
     #[test]

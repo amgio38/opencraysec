@@ -89,6 +89,7 @@ pub fn scan_event(r: &ScanReport, client: Option<&str>) -> Event {
                 "dev": p.dev,
             })).collect::<Vec<_>>(),
             "install_scripts_unknown": r.install_scripts_unknown,
+            "actions_unchecked": r.actions_unchecked,
             "findings": findings,
         }),
     )
@@ -584,6 +585,7 @@ mod tests {
             informational_omitted: 0,
             install_scripts: vec![],
             install_scripts_checked: vec![],
+            actions_unchecked: vec![],
             install_scripts_unknown: vec![],
             findings: vec![],
             packages: vec![],
@@ -641,6 +643,7 @@ mod tests {
             informational_omitted: 0,
             install_scripts: vec![],
             install_scripts_checked: vec![],
+            actions_unchecked: vec![],
             install_scripts_unknown: vec![],
             findings: vec![mal, plain],
             packages: vec![],
@@ -677,6 +680,7 @@ mod tests {
             informational_omitted: 0,
             install_scripts: vec![native],
             install_scripts_checked: vec!["package-lock.json".into()],
+            actions_unchecked: vec![],
             install_scripts_unknown: vec![("Cargo.lock".into(), "no build.rs record".into())],
             findings: vec![],
             packages: vec![],
@@ -755,6 +759,42 @@ mod tests {
         assert_eq!(s["agent_config"]["findings"][0]["rule"], "MAL-2026-9");
         let none = crate::summary::summarize(&[], Some("/p"));
         assert!(none.get("agent_config").is_none() || none["agent_config"].is_null());
+    }
+
+    #[test]
+    fn actions_that_were_not_checked_reach_the_event_and_the_dashboard_notes() {
+        let report = ScanReport {
+            root: "/p".into(),
+            scanned_at: "t".into(),
+            lockfiles: vec![".github/workflows/ci.yml".into()],
+            skipped: vec![],
+            unchecked: vec![],
+            packages_checked: 1,
+            data_sources: vec![],
+            notes: vec![],
+            informational_omitted: 0,
+            install_scripts: vec![],
+            install_scripts_checked: vec![],
+            actions_unchecked: vec![(
+                ".github/workflows/ci.yml".into(),
+                "1 action(s) (1 pinned by commit SHA) name no release version".into(),
+            )],
+            install_scripts_unknown: vec![],
+            findings: vec![],
+            packages: vec![],
+            all_packages: vec![],
+        };
+        let ev = scan_event(&report, None);
+        assert_eq!(
+            ev.data["actions_unchecked"][0][0],
+            ".github/workflows/ci.yml"
+        );
+        let s = crate::summary::summarize(&[ev], Some("/p"));
+        let notes = s["notes"].to_string();
+        assert!(
+            notes.contains("actions not checked .github/workflows/ci.yml: 1 action(s)"),
+            "{notes}"
+        );
     }
 
     #[test]

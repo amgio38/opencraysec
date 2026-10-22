@@ -124,6 +124,11 @@ fn commands(
             vec![format!("go get {name}@v{}", to.trim_start_matches('v')), "go mod tidy".into()],
             "Use `go mod why -m` to see which module pulls this one in if it is indirect.".into(),
         ),
+        // A workflow is edited by hand; no command can do it for you.
+        Ecosystem::GitHubActions => (
+            Vec::new(),
+            format!("Edit {lockfile}: change `uses: {name}@...` to `uses: {name}@v{to}` (the tag of that release), or better to the full commit SHA of that release, which cannot be moved. Nothing is changed for you."),
+        ),
         Ecosystem::PyPI => {
             let cmd = match lf {
                 "poetry.lock" => format!("poetry add \"{name}>={to}\""),

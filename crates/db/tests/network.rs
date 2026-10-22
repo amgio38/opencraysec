@@ -110,6 +110,38 @@ fn osv_dump_kev_epss_cwe_updates() {
 }
 
 #[test]
+fn the_github_actions_dump_is_fetched_with_its_space_encoded_and_matched_without_regard_to_case() {
+    let advisory = r#"{"id":"GHSA-act-1","summary":"s","affected":[
+        {"package":{"ecosystem":"GitHub Actions","name":"Acme/Tool"},
+         "ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"1.2.0"}]}]},
+        {"package":{"ecosystem":"npm","name":"other"}}]}"#;
+    let server = MockServer::start(vec![Route::get(
+        "/GitHub%20Actions/all.zip",
+        zip_of(&[("GHSA-act-1.json", advisory)]),
+    )]);
+    let dir = tempfile::tempdir().expect("tmp");
+    let store = store_for(&server, dir.path());
+    let meta = update::update_osv(&store, Ecosystem::GitHubActions).expect("actions dump");
+    assert_eq!(
+        meta.records, 1,
+        "only the GitHub Actions entry of the record is stored"
+    );
+    assert!(store.has(Ecosystem::GitHubActions));
+    let want: HashSet<String> = [Ecosystem::GitHubActions.normalize_name("ACME/tool")].into();
+    let recs = store
+        .load_for(Ecosystem::GitHubActions, &want)
+        .expect("load");
+    assert_eq!(recs["acme/tool"][0].id, "GHSA-act-1");
+    let listed: Vec<String> = store
+        .status()
+        .ecosystems
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
+    assert_eq!(listed, vec!["GitHub Actions"]);
+}
+
+#[test]
 fn update_failures_are_errors_and_leave_no_partial_state() {
     let server = MockServer::start(vec![
         Route::get("/Go/all.zip", b"this is not a zip".to_vec()),

@@ -12,6 +12,7 @@ reported as skipped rather than read.
 | JavaScript / TypeScript (`npm`) | `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock` (v1 and berry), `pnpm-lock.yaml` (v5 to v9) | Workspace packages and non-registry specs are skipped. |
 | PHP (`Packagist`) | `composer.lock` | `packages` and `packages-dev`; `dev-` branch versions are skipped. |
 | Go | `go.mod`, `go.sum` | `go.sum` is used only when there is no `go.mod` next to it, because it also lists versions that were never selected. |
+| GitHub Actions | `.github/workflows/*.yml`, `.github/workflows/*.yaml` | The `uses: owner/repo@ref` lines, matched by repository. See [GitHub Actions](#github-actions-workflows). |
 | Python (`PyPI`) | `poetry.lock`, `uv.lock`, `Pipfile.lock`, `requirements*.txt` | `requirements*.txt` entries need an exact `==` pin; others (ranges, URLs, `-e` installs) cannot be matched and are reported as `unchecked` in the scan result (never silently dropped). A `-r other.txt` include is fine when that file is scanned too; `-c` constraint files add no dependencies. Local and editable packages are skipped. |
 
 Every dependency found is recorded in the activity log's snapshot whatever `--ecosystem` narrows,
@@ -55,6 +56,52 @@ another machine.
 - There is no source tree beside an SBOM, so usage evidence is `unknown` for these packages and their
   `source` reads `sbom:<file>`.
 - Everything the tool exports as CycloneDX can be read back.
+
+## GitHub Actions workflows
+
+A workflow is code that runs with your repository's token, often on text that anyone can send: an issue,
+a pull request, a branch name. Two things are checked, and they are kept apart.
+
+**The actions it uses, from published data.** Each `uses: owner/repo@ref` is an action, and an action
+is a dependency. A full release tag (`v4.1.2`) is matched against the
+[OSV](https://osv.dev) `GitHub Actions` data, which republishes the GitHub Advisory Database entries for
+actions (see [DATA-SOURCES.md](DATA-SOURCES.md#github-actions)). The match is by repository, so
+`github/codeql-action/analyze@v3.25.0` is checked as `github/codeql-action` 3.25.0: a folder action and a
+reusable workflow share the releases of their repository. An advisory that names only a subfolder is
+missed. Names are compared without regard to case, as GitHub does.
+
+Three kinds of reference name no release, so they **cannot be checked**, and each is listed in the report
+(`actions not checked ...`), never dropped:
+
+| Reference | Why it cannot be checked |
+| --- | --- |
+| A full commit SHA (`@0123...`) | It is the safest way to pin an action, but it names no version. |
+| A floating tag (`@v4`, `@v4.1`) | It follows the newest release of its line, so it names no one release. |
+| A branch (`@main`) | It moves with every push. |
+
+These are kept out of the "unchecked" dependencies that make a result *incomplete*: pinning by SHA is the
+recommended practice (GitHub's guide: "Pin references to actions to a commit SHA in your workflow files"),
+and a project that follows it must not be told its scan is incomplete for that reason. They are disclosed
+instead, in the text report, in the JSON, SARIF and CycloneDX notes, in the activity log, and in the
+notes at the top of the dashboard and the HTML export. Local actions (`./...`) and container images
+(`docker://...`) are not read.
+
+**Dangerous patterns, from rules.** Five rules look at what a workflow does. They read one line at a time
+and do not parse YAML, so every hit is **suspected**. Each names the entry of the
+[OWASP Top 10 CI/CD Security Risks](https://owasp.org/www-project-top-10-ci-cd-security-risks/) that fits it
+best (the list shows no edition year, so none is given); that choice of entry is ours.
+
+| Rule | What it rests on | Known false positives and misses |
+| --- | --- | --- |
+| `gha-script-injection` (CWE-78, CICD-SEC-4) | GitHub Security Lab's article on [untrusted input](https://securitylab.github.com/resources/github-actions-untrusted-input/) lists the event data that "might be attacker controlled and should be treated as potentially untrusted input" and recommends to "set the untrusted input value of the expression to an intermediate environment variable". The rule uses that list: `github.event.issue.title` and `.body`, `github.event.pull_request.title`, `.body`, `.head.ref`, `.head.label` and `.head.repo.default_branch`, `github.event.comment.body`, `github.event.review.body`, `github.event.pages.*.page_name`, `github.event.commits.*.message`, `.author.email` and `.author.name`, `github.event.head_commit.message`, `.author.email` and `.author.name`, and `github.head_ref`. | Only a `run:` script is read, so the same expression in an `actions/github-script` script is missed. An expression wrapped in a function (`contains(...)`) is not matched, and neither is a value moved into a variable first. The finding names the context, never the rest of the line. |
+| `gha-pwn-request` (CWE-829, CICD-SEC-4) | The [pwn requests](https://securitylab.github.com/resources/github-actions-preventing-pwn-requests/) article: workflows triggered by `pull_request_target` "have write permission to the target repository" and "access to target repository secrets", and "a PR supplies code to any build or test logic in place for your project". The rule needs a `pull_request_target` or `workflow_run` trigger, an `actions/checkout` step, and a `ref:` or `repository:` that points at the pull request's head. | The trigger is found by its name in the file, outside a comment. A checkout of the pull request that is followed by no code from it is still reported. A checkout done any other way is missed. |
+| `gha-workflow-run-artifact` (CWE-829, CICD-SEC-4) | The same article: "Artifacts resulting from untrusted PR data are themselves untrusted" and running them "in the privileged workflow_run workflow context" is "a security vulnerability". | It cannot tell whether the artifact is only read as data, which is safe. Medium for that reason. Only `actions/download-artifact` and `dawidd6/action-download-artifact` are known. |
+| `gha-unpinned-action` (CWE-1357, CICD-SEC-3) | GitHub's [security hardening guide](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions): "Pin references to actions to a commit SHA in your workflow files", which "helps mitigate the risk of a bad actor adding a backdoor to the action's repository". | Reported for every action by a tag or branch, including GitHub's own, so a workflow with many actions has many low findings. A project that locks its workflow dependencies some other way is still reported. |
+| `gha-broad-permissions` (CWE-250, CICD-SEC-5) | The same guide: "make sure that the `GITHUB_TOKEN` is granted the minimum required permissions". | Only the literal `permissions: write-all`. A workflow with no `permissions:` key, or with a long list of write permissions, is not reported. |
+
+The rules read only the files in `.github/workflows`. Put `opencraysec:ignore` on a line, or alone in a
+comment on the line above, to silence a rule there. The ordinary secret rules of `scan-code` read these
+files too.
 
 ## Rules for code that talks to an AI model
 
@@ -125,6 +172,7 @@ and the commands for the package manager the lockfile belongs to:
 | `uv.lock` | `uv lock --upgrade-package NAME` |
 | `Pipfile.lock` | `pipenv install "NAME>=TO"` |
 | `requirements.txt` | `pip install "NAME>=TO"` and update the pin |
+| A workflow | No command: edit `uses: OWNER/REPO@...` to the tag or, better, the commit SHA of the fixed release |
 
 A step that crosses a major version (or a `0.x` minor version) is marked `needs_confirmation`.
 opencraysec never runs these commands itself.
@@ -185,6 +233,11 @@ comment on it or on the line above.
 | `ai-output-shell` | A model's answer inside a `child_process` call or `exec(` (JS, TS), or `os.system`, `subprocess.*`, `Popen` (Python) | CWE-78 | high |
 | `ai-output-sql` | A model's answer inside `.query(` / `.execute(` / `.raw(` | CWE-89 | high |
 | `ai-output-html` | A model's answer assigned to `innerHTML` / `outerHTML`, or inside `dangerouslySetInnerHTML`, `document.write(` (JS, TS) | CWE-79 | medium |
+| `gha-script-injection` | In a workflow, a `run:` script with `${{ github.event.issue.title }}`, a pull request title or body, a branch name, a commit message or the like pasted into it | CWE-78 | high |
+| `gha-pwn-request` | A `pull_request_target` or `workflow_run` workflow that checks out the pull request's own code | CWE-829 | high |
+| `gha-workflow-run-artifact` | A `workflow_run` workflow that downloads an artifact | CWE-829 | medium |
+| `gha-unpinned-action` | `uses:` an action by a tag or a branch instead of a full commit SHA | CWE-1357 | low |
+| `gha-broad-permissions` | `permissions: write-all` | CWE-250 | medium |
 | `ai-prompt-concat` | A variable named for a prompt built by putting `req.body`, `req.query`, `user_input`, `input(` and the like into a string (JS, TS, Python) | CWE-1427 | low |
 | `ai-system-prompt-user-input` | A `role: "system"` message whose content is built from the same request input | CWE-1427 | medium |
 | `php-eval` | `eval(` | CWE-95 | high |

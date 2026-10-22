@@ -33,7 +33,9 @@ is absent otherwise. A malicious finding is `critical`, has no `reachability`, a
 package, not by upgrading. `data_sources` entries also carry `malicious_records`, the number of such
 reports in the local dataset, when it was counted. `install_scripts` lists the packages whose lockfile
 entry says an install step runs code (`name`, `version`, `source`, `dev`), cut to `limit` with the full
-count in `install_scripts_total`; `install_scripts_checked` names the lockfiles that record this and
+count in `install_scripts_total`; `actions_unchecked` lists, per workflow file, the GitHub Actions that name no
+release version (a commit SHA, a floating tag, a branch) and so were not checked, which does not make the
+result incomplete (see [LANGUAGES.md](LANGUAGES.md#github-actions-workflows)); `install_scripts_checked` names the lockfiles that record this and
 `install_scripts_unknown` the ones that cannot say, with why (see
 [LANGUAGES.md](LANGUAGES.md#install-time-code)). It is not a vulnerability list. **Read `notes`**: it says
 what was not scanned.

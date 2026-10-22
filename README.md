@@ -16,7 +16,8 @@ your machine.
 
 **What you get**
 
-- **Many languages**: Rust, JavaScript/TypeScript, PHP, Go and Python lockfiles.
+- **Many languages**: Rust, JavaScript/TypeScript, PHP, Go and Python lockfiles, and the GitHub Actions
+  your workflows use.
 - **Current, public data only**: [OSV](https://osv.dev) (which aggregates GitHub Advisories, RustSec,
   the Go vulnerability database and more), the CISA *Known Exploited Vulnerabilities* list, FIRST EPSS
   scores, the MITRE CWE catalog and NVD scores. CVE ids, CWE weakness classes and CVSS come with the
@@ -36,6 +37,11 @@ your machine.
   products that no lockfile lists, and says whether their release line is end of life or behind its
   newest patch, the day a fix ships. With `--nvd` it also lists the CVEs NVD records for that exact
   version, which is how a flaw in PHP itself shows up.
+- **Your CI too**: the actions a workflow uses are checked against the same advisory data (a full release
+  tag is matched; a commit SHA, a floating tag or a branch is listed as not checked, never dropped), and
+  `scan-code` flags dangerous workflow patterns: text an outsider controls pasted into a `run:` script, a
+  `pull_request_target` workflow that checks out the pull request, an unpinned action and a token with every
+  permission, each with the guidance it rests on ([docs/LANGUAGES.md](docs/LANGUAGES.md#github-actions-workflows)).
 - **Your own code too**: `scan-code` flags suspected hard-coded secrets, injection patterns, disabled TLS
   verification and unsafe deserialization, each with a CWE, and can run gitleaks or semgrep. For code that
   calls an AI model it also looks for provider keys (Anthropic, Hugging Face, Google), a model's answer

@@ -266,4 +266,17 @@ mod tests {
         assert_eq!(compare(PyPI, "1.0+local", "1.0"), Equal);
         assert_eq!(compare(PyPI, "1.0-1", "1.0.post1"), Equal);
     }
+
+    #[test]
+    fn github_actions_versions_order_like_semver_and_accept_a_bare_major() {
+        use std::cmp::Ordering::{Equal, Greater, Less};
+        let g = Ecosystem::GitHubActions;
+        assert_eq!(compare(g, "6", "6.0.0"), Equal);
+        assert_eq!(compare(g, "v4.1.2", "4.1.2"), Equal);
+        assert_eq!(compare(g, "5", "5.3.1"), Less);
+        assert_eq!(compare(g, "5.3.1", "6"), Less);
+        assert_eq!(compare(g, "1.13.2", "1.13.6"), Less);
+        assert_eq!(compare(g, "10.0.0", "9.9.9"), Greater);
+        assert_eq!(compare(g, "1.0.0-rc.1", "1.0.0"), Less);
+    }
 }

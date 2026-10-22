@@ -13,6 +13,7 @@ mod php;
 mod python;
 mod rust;
 mod sbom;
+pub mod workflow;
 
 pub use sbom::SOURCE_PREFIX as SBOM_SOURCE_PREFIX;
 
@@ -49,6 +50,10 @@ pub struct Discovery {
     /// Lockfiles that were read but hold dependencies the scan cannot check (unpinned or
     /// included requirements), with how many and why.
     pub unchecked: Vec<(String, String)>,
+    /// Workflow files whose actions cannot be matched to a release (pinned by commit SHA, on a
+    /// floating tag or on a branch), with how many and which. Kept apart from `unchecked` on purpose:
+    /// pinning by SHA is the recommended practice, so it must not make a result "incomplete".
+    pub actions_unmatched: Vec<(String, String)>,
     /// Packages whose lockfile entry says an install step runs code (npm `hasInstallScript`).
     /// Deduplicated. Only lockfiles that record it contribute; see `install_scripts_unknown`.
     pub install_scripts: Vec<Package>,
@@ -77,6 +82,7 @@ fn ecosystem_of_kind(kind: &str) -> Option<Ecosystem> {
         "composer" => Some(Ecosystem::Packagist),
         "gomod" | "gosum" => Some(Ecosystem::Go),
         "poetry" | "uv" | "pipfile" | "requirements" => Some(Ecosystem::PyPI),
+        "workflow" => Some(Ecosystem::GitHubActions),
         _ => None,
     }
 }
@@ -124,6 +130,7 @@ pub fn parse_text(kind: &str, text: &str, source: &str) -> Result<Vec<Package>, 
         "composer" => php::composer_lock(text, source),
         "gomod" => Ok(go::go_mod(text, source)),
         "gosum" => Ok(go::go_sum(text, source)),
+        "workflow" => Ok(workflow::parse(text, source).packages),
         "poetry" | "uv" => python::toml_lock(text, source, kind == "uv"),
         "pipfile" => python::pipfile_lock(text, source),
         "requirements" => Ok(python::requirements(text, source)),
@@ -148,7 +155,7 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
             if depth < MAX_DEPTH && !SKIP_DIRS.contains(&name.as_str()) {
                 walk(&e.path(), depth + 1, out);
             }
-        } else if kind_of(&name).is_some() {
+        } else if kind_of(&name).is_some() || workflow::is_workflow_path(&e.path()) {
             out.push(e.path());
         }
     }
@@ -185,6 +192,7 @@ pub fn discover(root: &Path, only: Option<&[Ecosystem]>) -> Discovery {
         // one lying around next to a project is not that project's dependency list.
         let kind = match kind_of(&name) {
             Some(k) => k,
+            None if workflow::is_workflow_path(&path) => "workflow",
             None if root.is_file() && name.to_ascii_lowercase().ends_with(".json") => "sbom",
             None => continue,
         };
@@ -223,6 +231,12 @@ pub fn discover(root: &Path, only: Option<&[Ecosystem]>) -> Discovery {
                 scripts = l.install_scripts;
                 l.packages
             })
+        } else if kind == "workflow" {
+            let w = workflow::parse(&text, &rel);
+            if let Some(note) = workflow::unmatched_note(&w.unmatched) {
+                d.actions_unmatched.push((rel.clone(), note));
+            }
+            Ok(w.packages)
         } else {
             parse_text(kind, &text, &rel)
         };
@@ -233,6 +247,8 @@ pub fn discover(root: &Path, only: Option<&[Ecosystem]>) -> Discovery {
                         d.install_scripts_checked.push(rel.clone());
                         install_scripts.extend(list);
                     }
+                    // A workflow's actions run as part of the workflow; they are not installed.
+                    None if kind == "workflow" => {}
                     None => d.install_scripts_unknown.push(InstallScriptGap {
                         file: rel.clone(),
                         ecosystem: ecosystem_of_kind(kind),
@@ -563,5 +579,71 @@ mod tests {
         assert_eq!(ecosystem_of_kind("composer"), Some(Ecosystem::Packagist));
         assert_eq!(ecosystem_of_kind("gosum"), Some(Ecosystem::Go));
         assert_eq!(ecosystem_of_kind("pipfile"), Some(Ecosystem::PyPI));
+    }
+
+    #[test]
+    fn workflows_are_found_in_the_workflows_folder_and_their_actions_are_packages() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let r = dir.path();
+        write(
+            r,
+            ".github/workflows/ci.yml",
+            "steps:\n  - uses: actions/checkout@v4.2.1\n  - uses: a/sha@0123456789abcdef0123456789abcdef01234567\n  - uses: b/float@v3\n",
+        );
+        write(
+            r,
+            "pkg/.github/workflows/rel.yaml",
+            "steps:\n  - uses: actions/checkout@v4.2.1\n  - uses: org/tool@v1.0.0\n",
+        );
+        write(r, ".github/workflows/notes.md", "uses: x/y@v9.9.9\n");
+        write(r, "config/other.yml", "uses: x/y@v9.9.9\n");
+        let d = discover(r, None);
+        let actions: Vec<(&str, &str)> = d
+            .packages
+            .iter()
+            .filter(|p| p.ecosystem == Ecosystem::GitHubActions)
+            .map(|p| (p.name.as_str(), p.source.as_str()))
+            .collect();
+        assert_eq!(
+            actions,
+            vec![
+                ("actions/checkout", ".github/workflows/ci.yml"),
+                ("actions/checkout", "pkg/.github/workflows/rel.yaml"),
+                ("org/tool", "pkg/.github/workflows/rel.yaml"),
+            ]
+        );
+        assert_eq!(
+            d.parsed,
+            vec![".github/workflows/ci.yml", "pkg/.github/workflows/rel.yaml"]
+        );
+        assert_eq!(d.actions_unmatched.len(), 1);
+        assert_eq!(d.actions_unmatched[0].0, ".github/workflows/ci.yml");
+        assert!(
+            d.actions_unmatched[0]
+                .1
+                .contains("1 pinned by commit SHA, 1 on a floating tag")
+        );
+        assert!(
+            d.unchecked.is_empty(),
+            "unmatched actions are not 'unchecked' dependencies"
+        );
+        assert!(
+            d.install_scripts_unknown.is_empty(),
+            "an action is not installed, so a workflow is not a lockfile that cannot say"
+        );
+        let only_npm = discover(r, Some(&[Ecosystem::Npm]));
+        assert!(only_npm.packages.is_empty());
+        let one = discover(&r.join(".github/workflows/ci.yml"), None);
+        assert_eq!(one.packages.len(), 1, "a workflow named directly is read");
+        assert!(
+            parse_text("workflow", "uses: a/b@v1.0.0\n", "w")
+                .expect("parses")
+                .len()
+                == 1
+        );
+        assert_eq!(
+            ecosystem_of_kind("workflow"),
+            Some(Ecosystem::GitHubActions)
+        );
     }
 }
