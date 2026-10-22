@@ -17,7 +17,7 @@ The release workflow refuses a tag whose version has no `## [version]` section.
   never a command. `--ecosystem actions` limits a scan to them.
 - `scan-code` rules for workflows (`gha-script-injection`, `gha-pwn-request`, `gha-workflow-run-artifact`,
   `gha-unpinned-action`, `gha-broad-permissions`), each with its CWE, the OWASP CI/CD Top 10 entry that fits
-  it, and the GitHub guidance or GitHub Security Lab article it rests on, quoted in
+  it, and the GitHub guidance or GitHub Security Lab article it rests on, summarised in
   `docs/LANGUAGES.md` together with what each rule misses. A test keeps every rule documented.
 - `scan-code` rules for code that talks to an AI model, each with a CWE and, where there is one, the
   OWASP Top 10 for LLM Applications (2025) entry: provider keys (`secret-anthropic-key`,
