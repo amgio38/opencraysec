@@ -3,9 +3,10 @@
 use std::path::{Path, PathBuf};
 
 use opencraysec_core::{Ecosystem, Severity};
-use opencraysec_db::update;
+use opencraysec_db::{runtime_data, update};
 use opencraysec_engine::{
-    CodeOptions, ScanOptions, ScanReport, explain, plan_fix, scan, scan_code, verify_fix,
+    CodeOptions, RuntimeOptions, ScanOptions, ScanReport, explain, plan_fix, scan, scan_code,
+    scan_runtime, verify_fix,
 };
 use opencraysec_log::EventLog;
 use opencraysec_log::events::{
@@ -69,6 +70,12 @@ pub fn list() -> Value {
             "annotations": { "readOnlyHint": true }
         },
         {
+            "name": "scan_runtime",
+            "description": "Check the interpreters, servers and databases the application runs on (PHP, nginx, Node.js, MySQL, ...) - things no lockfile lists - against release and end-of-life data stored locally. Reports end-of-life release lines and missing patch releases. It does NOT check CVEs: a flaw in PHP itself shows up as `outdated` or `eol`, not as an advisory. Without `products` it runs a fixed set of version commands on this machine (php --version, nginx -v, ...); pass `products` (php@8.2.30) to check a machine or container you cannot run commands on. Needs `update_db` once for the data; never uses the network.",
+            "inputSchema": { "type": "object", "properties": { "products": { "type": "array", "items": { "type": "string" }, "description": "product@version entries, for example php@8.2.30 or nodejs@20.11.0. Omit to detect what is installed here." } } },
+            "annotations": { "readOnlyHint": true, "openWorldHint": false }
+        },
+        {
             "name": "explain_advisory",
             "description": "Explain one advisory by id (GHSA-..., CVE-..., RUSTSEC-..., GO-...): description, severity, CWE weakness class, exploitation signals, affected packages and links.",
             "inputSchema": { "type": "object", "properties": { "id": { "type": "string" }, "offline": { "type": "boolean" } }, "required": ["id"] },
@@ -102,7 +109,7 @@ pub fn list() -> Value {
         },
         {
             "name": "update_db",
-            "description": "Download or refresh the local advisory data (OSV per ecosystem; with enrich=true also CISA KEV, EPSS and the MITRE CWE catalog). npm is large (hundreds of MB). Without ecosystems it refreshes what was already downloaded.",
+            "description": "Download or refresh the local advisory data (OSV per ecosystem; with enrich=true also CISA KEV, EPSS, the MITRE CWE catalog and the release/end-of-life data scan_runtime uses). npm is large (hundreds of MB). Without ecosystems it refreshes what was already downloaded.",
             "inputSchema": { "type": "object", "properties": { "ecosystems": ecos, "enrich": { "type": "boolean", "description": "Also refresh CISA KEV and EPSS (default true)." } } },
             "annotations": { "readOnlyHint": false, "idempotentHint": true, "openWorldHint": true }
         },
@@ -252,6 +259,13 @@ pub fn call(cfg: &ServerConfig, name: &str, args: &Value) -> Result<Value, ToolE
             logged(cfg, |log, client| log.append(&code_event(&r, client)));
             Ok(serde_json::to_value(r).unwrap_or(Value::Null))
         }
+        "scan_runtime" => {
+            let opts = RuntimeOptions {
+                products: string_list(args, "products"),
+            };
+            let report = scan_runtime(&cfg.store, &opts).or_else(|e| fail(e.to_string()))?;
+            Ok(serde_json::to_value(report).unwrap_or(Value::Null))
+        }
         "explain_advisory" => {
             let id =
                 str_arg(args, "id").ok_or_else(|| ToolError::Failed("id is required".into()))?;
@@ -382,6 +396,10 @@ pub fn call(cfg: &ServerConfig, name: &str, args: &Value) -> Result<Value, ToolE
                 results.push(match update::update_cwe(&cfg.store) {
                     Ok(n) => json!({ "source": "MITRE CWE", "entries": n }),
                     Err(e) => json!({ "source": "MITRE CWE", "error": e.to_string() }),
+                });
+                results.push(match runtime_data::update_runtime(&cfg.store) {
+                    Ok(u) => json!({ "source": "runtime release data", "products": u.products, "php_lines": u.php_lines, "php_error": u.php_error }),
+                    Err(e) => json!({ "source": "runtime release data", "error": e.to_string() }),
                 });
             }
             Ok(json!({ "updated": results, "status": cfg.store.status() }))

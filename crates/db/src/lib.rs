@@ -19,6 +19,7 @@ pub mod cwe;
 pub mod net;
 pub mod nvd;
 pub mod online;
+pub mod runtime_data;
 pub mod update;
 
 #[cfg(any(test, feature = "testutil"))]
@@ -85,6 +86,8 @@ pub struct Status {
     pub epss_updated_at: Option<String>,
     /// When the MITRE CWE catalog was last fetched.
     pub cwe_updated_at: Option<String>,
+    /// When the runtime release and end-of-life data was last fetched.
+    pub runtime_updated_at: Option<String>,
 }
 
 /// Where datasets and lookups come from. The defaults are the public services; override them to
@@ -103,6 +106,10 @@ pub struct Endpoints {
     pub cwe: String,
     /// NVD CVE API 2.0.
     pub nvd: String,
+    /// endoflife.date products feed (API v1 `products/full`).
+    pub eol: String,
+    /// php.net active release lines.
+    pub php_releases: String,
     /// Minimum pause between NVD requests, in milliseconds (default: 6500, or 700 with a key).
     pub nvd_gap_ms: Option<u64>,
 }
@@ -116,6 +123,8 @@ impl Default for Endpoints {
             epss: "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz".into(),
             cwe: "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip".into(),
             nvd: "https://services.nvd.nist.gov/rest/json/cves/2.0".into(),
+            eol: "https://endoflife.date/api/v1/products/full".into(),
+            php_releases: "https://www.php.net/releases/active.php".into(),
             nvd_gap_ms: None,
         }
     }
@@ -123,7 +132,8 @@ impl Default for Endpoints {
 
 impl Endpoints {
     /// Defaults, overridden by `OPENCRAYSEC_OSV_DUMP_URL`, `OPENCRAYSEC_OSV_API_URL`,
-    /// `OPENCRAYSEC_KEV_URL`, `OPENCRAYSEC_EPSS_URL`, `OPENCRAYSEC_CWE_URL`, `OPENCRAYSEC_NVD_URL`.
+    /// `OPENCRAYSEC_KEV_URL`, `OPENCRAYSEC_EPSS_URL`, `OPENCRAYSEC_CWE_URL`, `OPENCRAYSEC_NVD_URL`,
+    /// `OPENCRAYSEC_EOL_URL`, `OPENCRAYSEC_PHP_RELEASES_URL`.
     pub fn from_env() -> Endpoints {
         Endpoints::from_lookup(|k| std::env::var(k).ok())
     }
@@ -132,13 +142,15 @@ impl Endpoints {
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Endpoints {
         let mut e = Endpoints::default();
         let get = |k: &str| get(k).filter(|v| !v.is_empty());
-        let slots: [(&str, &mut String); 6] = [
+        let slots: [(&str, &mut String); 8] = [
             ("OPENCRAYSEC_OSV_DUMP_URL", &mut e.osv_dump),
             ("OPENCRAYSEC_OSV_API_URL", &mut e.osv_api),
             ("OPENCRAYSEC_KEV_URL", &mut e.kev),
             ("OPENCRAYSEC_EPSS_URL", &mut e.epss),
             ("OPENCRAYSEC_CWE_URL", &mut e.cwe),
             ("OPENCRAYSEC_NVD_URL", &mut e.nvd),
+            ("OPENCRAYSEC_EOL_URL", &mut e.eol),
+            ("OPENCRAYSEC_PHP_RELEASES_URL", &mut e.php_releases),
         ];
         for (name, slot) in slots {
             if let Some(v) = get(name) {
@@ -335,6 +347,7 @@ impl Store {
             kev_updated_at: stamp(self.kev_path()),
             epss_updated_at: header_stamp(&self.epss_path()),
             cwe_updated_at: header_stamp(&self.cwe_path()),
+            runtime_updated_at: stamp(self.runtime_lifecycle_path()),
         }
     }
 

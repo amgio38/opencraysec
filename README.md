@@ -28,6 +28,9 @@ your machine.
   which advisories are gone, `record_fix` logs what was changed and why, like a commit message. An id is
   `resolved` only when an earlier scan of the same path reported it; an id no earlier scan reported is
   `unknown`, and that proves nothing.
+- **The runtime underneath too**: `scan-runtime` checks PHP, nginx, Node.js, databases and similar
+  products that no lockfile lists, and says whether their release line is end of life or behind its
+  newest patch. It judges release lines, not CVEs, and works the day a fix ships.
 - **Your own code too**: `scan-code` flags suspected hard-coded secrets, injection patterns, disabled TLS
   verification and unsafe deserialization, each with a CWE, and can run gitleaks or semgrep.
 - **A report people can read**: a read-only dashboard with charts, the vulnerability list and the history
@@ -108,6 +111,8 @@ opencraysec plan-fix .                   # the upgrade commands; nothing is modi
 opencraysec verify-fix . --id GHSA-xxxx-xxxx-xxxx   # re-scan; "resolved" needs an earlier scan of this path
 opencraysec record-fix . --id GHSA-xxxx-xxxx-xxxx --summary "Upgrade lodash" --reason "Prototype pollution"
 opencraysec scan-code .                  # suspected weaknesses in your own source
+opencraysec scan-runtime                # PHP, nginx, Node.js ... installed here: end of life? behind?
+opencraysec scan-runtime php@8.2.30     # or name the versions, for a container or another machine
 opencraysec dashboard                    # the report on http://localhost:1787
 opencraysec report -o report.html        # the same report as one file
 opencraysec status                       # what data is stored, and how old
@@ -138,6 +143,7 @@ gate; the report then says it is incomplete. `verify-fix` exits 1 when a finding
 | --- | --- |
 | `scan_dependencies` | Check lockfiles against current advisories, ranked, with usage evidence. |
 | `scan_code` | Suspected weaknesses in the project's own source. |
+| `scan_runtime` | Installed interpreters, servers and databases against release and end-of-life data. |
 | `explain_advisory` | One advisory: what it is, CWE, exploitation signals, references. |
 | `plan_fix` | The minimal upgrades and the commands to run. Modifies nothing. |
 | `verify_fix` | Re-scan and prove advisories are gone (and whether that proof can be trusted). |

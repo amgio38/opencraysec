@@ -30,6 +30,8 @@ fn store_for(server: &MockServer, dir: &std::path::Path) -> Store {
         epss: format!("{}/epss.csv.gz", server.base),
         cwe: format!("{}/cwe.zip", server.base),
         nvd: format!("{}/nvd", server.base),
+        eol: format!("{}/eol", server.base),
+        php_releases: format!("{}/php", server.base),
         nvd_gap_ms: Some(0),
     })
 }

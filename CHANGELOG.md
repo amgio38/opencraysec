@@ -5,6 +5,19 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ## [Unreleased]
 
+### Added
+
+- `scan-runtime` (MCP tool `scan_runtime`): checks the interpreters, servers and databases an application
+  runs on (PHP, nginx, Node.js, MySQL and others) against release and end-of-life data. These products are
+  in no lockfile, so a flaw in PHP itself was invisible to every earlier scan. The verdicts are `eol`,
+  `outdated`, `current` and `unknown`; they describe release lines, not CVEs, and the report says so.
+- `update` (and `update_db`) also download the end-of-life data (endoflife.date) and the newest PHP patch
+  releases (php.net). A scan reads them without the network. The php.net feed is there because aggregators
+  lag a vendor by a day or more; if it fails, the update still succeeds.
+- Versions come from a fixed table of version commands or from `product@version` arguments, which is how
+  to check a container or another machine. Nothing in the downloaded data is ever executed.
+- New crate `opencraysec-runtime` (a leaf, no network), registered in the layering rules.
+
 ## [0.20261021.1] - 2026-10-21
 
 Documentation only; no behaviour changed.

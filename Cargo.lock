@@ -471,6 +471,7 @@ dependencies = [
  "opencraysec-lockfile",
  "opencraysec-log",
  "opencraysec-mcp",
+ "opencraysec-runtime",
  "opencraysec-web",
  "serde",
  "serde_json",
@@ -494,6 +495,7 @@ dependencies = [
  "flate2",
  "opencraysec-core",
  "opencraysec-db",
+ "opencraysec-runtime",
  "serde",
  "serde_json",
  "tempfile",
@@ -508,6 +510,7 @@ dependencies = [
  "opencraysec-core",
  "opencraysec-db",
  "opencraysec-lockfile",
+ "opencraysec-runtime",
  "regex",
  "serde",
  "serde_json",
@@ -550,6 +553,15 @@ dependencies = [
  "serde_json",
  "tempfile",
  "zip",
+]
+
+[[package]]
+name = "opencraysec-runtime"
+version = "0.20261021.1"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -18,6 +18,7 @@ workspace = true
 opencraysec-core.workspace = true
 opencraysec-lockfile.workspace = true
 opencraysec-db.workspace = true
+opencraysec-runtime.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 regex.workspace = true

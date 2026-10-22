@@ -17,6 +17,8 @@ fn store_with(dir: &Path, server: Option<&MockServer>) -> Store {
             osv_dump: s.base.clone(),
             osv_api: format!("{}/v1", s.base),
             nvd: format!("{}/nvd", s.base),
+            eol: format!("{}/eol", s.base),
+            php_releases: format!("{}/php", s.base),
             nvd_gap_ms: Some(0),
             ..Endpoints::default()
         }),
@@ -477,4 +479,68 @@ fn not_found_findings_sink_but_exploited_ones_lead() {
         vec![("GO-KEV", "not_found"), ("GO-USED", "used_symbol")],
         "exploited leads even when unused"
     );
+}
+
+#[test]
+fn runtime_scan_judges_given_versions_offline_after_an_update() {
+    use opencraysec_db::runtime_data::update_runtime;
+    use opencraysec_engine::{RuntimeOptions, scan_runtime};
+    use opencraysec_runtime::Status;
+
+    let dir = tempfile::tempdir().expect("tmp");
+    let server = MockServer::start(vec![
+        Route::get(
+            "/eol",
+            r#"{"result":[{"name":"php","releases":[
+                {"name":"8.4","eolFrom":"2028-12-31","isEol":false,"latest":{"name":"8.4.26"}},
+                {"name":"7.4","eolFrom":"2022-11-28","isEol":true,"latest":{"name":"7.4.33"}}]}]}"#,
+        ),
+        Route::get("/php", r#"{"8":{"8.4":{"version":"8.4.27"}}}"#),
+    ]);
+    let store = store_with(dir.path(), Some(&server));
+    let opts = RuntimeOptions {
+        products: vec![
+            "php@7.4.33".into(),
+            "php@8.4.26".into(),
+            "nosuch@1.0".into(),
+        ],
+    };
+
+    // Before any update: honest about knowing nothing.
+    let before = scan_runtime(&store, &opts).expect("scans");
+    assert!(before.results.iter().all(|r| r.status == Status::Unknown));
+    assert!(
+        before
+            .notes
+            .iter()
+            .any(|n| n.contains("opencraysec update"))
+    );
+    assert_eq!(before.data.lifecycle_updated_at, None);
+
+    update_runtime(&store).expect("update");
+    // The scan itself must not need the network: scan with a store that has no endpoints.
+    let offline = Store::at(dir.path().join("data"));
+    let after = scan_runtime(&offline, &opts).expect("scans");
+    let status = |p: &str, v: &str| {
+        after
+            .results
+            .iter()
+            .find(|r| r.product == p && r.version == v)
+            .map(|r| r.status)
+    };
+    assert_eq!(status("php", "7.4.33"), Some(Status::Eol));
+    assert_eq!(
+        status("php", "8.4.26"),
+        Some(Status::Outdated),
+        "php.net is ahead of the aggregator"
+    );
+    assert_eq!(status("nosuch", "1.0"), Some(Status::Unknown));
+    assert!(after.data.lifecycle_updated_at.is_some());
+    assert_eq!(after.data.vendor_updated_at[0].0, "php");
+
+    // A malformed argument is an error, not a silent skip.
+    let bad = RuntimeOptions {
+        products: vec!["php".into()],
+    };
+    assert!(scan_runtime(&offline, &bad).is_err());
 }

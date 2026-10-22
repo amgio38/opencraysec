@@ -165,6 +165,7 @@ fn every_tool_is_listed_and_callable() {
     for want in [
         "scan_dependencies",
         "scan_code",
+        "scan_runtime",
         "explain_advisory",
         "plan_fix",
         "verify_fix",
@@ -240,12 +241,14 @@ fn update_db_runs_online_and_reports_per_source_errors() {
         kev: format!("{}/kev", server.base),
         epss: format!("{}/epss", server.base),
         cwe: format!("{}/cwe", server.base),
+        eol: format!("{}/eol", server.base),
+        php_releases: format!("{}/php", server.base),
         ..opencraysec_db::Endpoints::default()
     });
     let r = call(&cfg, "update_db", json!({"ecosystems":["go"]}));
     assert_eq!(r["isError"], false);
     let updated = r["structuredContent"]["updated"].as_array().expect("arr");
-    assert_eq!(updated.len(), 4, "go + KEV + EPSS + CWE");
+    assert_eq!(updated.len(), 5, "go + KEV + EPSS + CWE + runtime data");
     assert!(
         updated.iter().all(|u| u.get("error").is_some()),
         "the mock serves nothing: {updated:?}"
@@ -433,6 +436,11 @@ fn update_db_stores_datasets_when_the_sources_answer() {
         ),
         opencraysec_db::testutil::Route::get("/epss", gz),
         opencraysec_db::testutil::Route::get(
+            "/eol",
+            r#"{"result":[{"name":"php","releases":[{"name":"7.4","eolFrom":"2022-11-28","isEol":true,"latest":{"name":"7.4.33"}}]}]}"#,
+        ),
+        opencraysec_db::testutil::Route::get("/php", r#"{"8":{"8.4":{"version":"8.4.27"}}}"#),
+        opencraysec_db::testutil::Route::get(
             "/cwe",
             zip(
                 "c.xml",
@@ -448,6 +456,8 @@ fn update_db_stores_datasets_when_the_sources_answer() {
         kev: format!("{}/kev", server.base),
         epss: format!("{}/epss", server.base),
         cwe: format!("{}/cwe", server.base),
+        eol: format!("{}/eol", server.base),
+        php_releases: format!("{}/php", server.base),
         ..opencraysec_db::Endpoints::default()
     });
     let r = call(&cfg, "update_db", json!({"ecosystems": ["go"]}));
@@ -458,7 +468,25 @@ fn update_db_stores_datasets_when_the_sources_answer() {
         "{updated:?}"
     );
     assert_eq!(updated[0]["records"], 1);
-    assert_eq!(updated.len(), 4);
+    assert_eq!(updated.len(), 5);
+
+    // The data update_db just stored is what scan_runtime judges with, offline.
+    cfg.offline = true;
+    let rt = call(
+        &cfg,
+        "scan_runtime",
+        json!({"products": ["php@7.4.33", "php@8.4.26"]}),
+    );
+    assert_eq!(rt["isError"], false, "{rt}");
+    let results = rt["structuredContent"]["results"].as_array().expect("arr");
+    assert_eq!(results[0]["status"], "eol");
+    assert_eq!(
+        results[1]["status"], "unknown",
+        "no 8.4 line in this mock's end-of-life data"
+    );
+    assert!(rt["structuredContent"]["data"]["lifecycle_updated_at"].is_string());
+    let bad = call(&cfg, "scan_runtime", json!({"products": ["php"]}));
+    assert_eq!(bad["isError"], true);
 }
 
 #[test]

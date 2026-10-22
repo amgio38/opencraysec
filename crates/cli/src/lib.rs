@@ -7,14 +7,16 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use opencraysec_core::{Ecosystem, Severity};
-use opencraysec_db::{Store, update};
+use opencraysec_db::{Store, runtime_data, update};
 use opencraysec_engine::{
-    CodeOptions, ScanOptions, explain, plan_fix, report, scan, scan_code, verify_fix,
+    CodeOptions, RuntimeOptions, ScanOptions, explain, plan_fix, report, scan, scan_code,
+    scan_runtime, verify_fix,
 };
 use opencraysec_log::EventLog;
 use opencraysec_log::events::{
     FixInput, code_event, log_scan, plan_event, record_fix, seen_finding_ids, verify_event,
 };
+use opencraysec_runtime::Status as RtStatus;
 
 /// Exit code: findings at or above the `--fail-on` threshold.
 pub const EXIT_FINDINGS: u8 = 1;
@@ -45,6 +47,12 @@ enum Format {
     Json,
     Sarif,
     Cyclonedx,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum RuntimeFormat {
+    Text,
+    Json,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -114,6 +122,17 @@ enum Cmd {
         /// Exit 1 if any finding is at or above this severity.
         #[arg(long)]
         fail_on: Option<String>,
+    },
+    /// Check the installed interpreters, servers and databases (PHP, nginx, Node.js, ...) against
+    /// release and end-of-life data. Lockfiles never list these. Exit 1 if any is end of life or
+    /// behind its newest patch release; exit 3 if nothing could be judged.
+    ScanRuntime {
+        /// Versions to check instead of detecting what is installed, as product@version
+        /// (php@8.2.30). The way to check a machine or container you are not on.
+        products: Vec<String>,
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: RuntimeFormat,
     },
     /// Download or refresh advisory data.
     Update {
@@ -268,6 +287,37 @@ fn workspace_of(path: &Path) -> String {
         .to_string()
 }
 
+/// The runtime report for a terminal: one block per product, then what was and was not checked.
+fn runtime_text(r: &opencraysec_runtime::RuntimeReport) -> String {
+    let mut s = String::new();
+    for x in &r.results {
+        let tag = match x.status {
+            RtStatus::Eol => "EOL",
+            RtStatus::Outdated => "OUTDATED",
+            RtStatus::Current => "current",
+            RtStatus::Unknown => "unknown",
+        };
+        s.push_str(&format!(
+            "{} {}  {tag}  [{}]\n  {}\n",
+            x.product, x.version, x.source, x.advice
+        ));
+    }
+    if r.results.is_empty() {
+        s.push_str("nothing was judged\n");
+    }
+    for n in &r.notes {
+        s.push_str(&format!("note: {n}\n"));
+    }
+    s.push_str(&format!(
+        "data: end-of-life data {}\n",
+        r.data
+            .lifecycle_updated_at
+            .as_deref()
+            .unwrap_or("not downloaded")
+    ));
+    s
+}
+
 fn emit(out: &mut dyn Write, to_file: Option<&Path>, text: &str) -> Result<(), String> {
     match to_file {
         Some(p) => std::fs::write(p, text).map_err(|e| format!("{}: {e}", p.display())),
@@ -403,8 +453,41 @@ fn execute(
                 writeln!(out, "EPSS: {epss} scores").ok();
                 let cwe = update::update_cwe(&store).map_err(|e| format!("CWE: {e}"))?;
                 writeln!(out, "CWE catalog: {cwe} entries").ok();
+                let rt = runtime_data::update_runtime(&store)
+                    .map_err(|e| format!("runtime release data: {e}"))?;
+                writeln!(out, "Runtime release data: {} products", rt.products).ok();
+                match (rt.php_lines, rt.php_error) {
+                    (Some(n), _) => writeln!(out, "php.net releases: {n} release lines").ok(),
+                    (None, e) => writeln!(
+                        err,
+                        "php.net releases unavailable: {}",
+                        e.unwrap_or_default()
+                    )
+                    .ok(),
+                };
             }
             Ok(0)
+        }
+        Cmd::ScanRuntime { products, format } => {
+            let r =
+                scan_runtime(&store, &RuntimeOptions { products }).map_err(|e| e.to_string())?;
+            let text = match format {
+                RuntimeFormat::Json => pretty(&r)?,
+                RuntimeFormat::Text => runtime_text(&r),
+            };
+            emit(out, None, &text)?;
+            let bad = r
+                .results
+                .iter()
+                .any(|x| matches!(x.status, RtStatus::Eol | RtStatus::Outdated));
+            let judged = r.results.iter().any(|x| x.status != RtStatus::Unknown);
+            Ok(if bad {
+                EXIT_FINDINGS
+            } else if !judged {
+                EXIT_INCOMPLETE
+            } else {
+                0
+            })
         }
         Cmd::Explain { id, offline } => {
             let e = explain(&store, &id, offline).map_err(|e| e.to_string())?;
@@ -1189,6 +1272,13 @@ mod tests {
             Route::get("/kev", r#"{"vulnerabilities":[{"cveID":"CVE-2026-0001"}]}"#),
             Route::get("/epss", gz),
             Route::get(
+                "/eol",
+                r#"{"result":[{"name":"php","releases":[
+                    {"name":"8.4","eolFrom":"2028-12-31","isEol":false,"latest":{"name":"8.4.26"}},
+                    {"name":"7.4","eolFrom":"2022-11-28","isEol":true,"latest":{"name":"7.4.33"}}]}]}"#,
+            ),
+            Route::get("/php", r#"{"8":{"8.4":{"version":"8.4.27"}}}"#),
+            Route::get(
                 "/cwe",
                 zip_of(&[(
                     "c.xml",
@@ -1201,6 +1291,8 @@ mod tests {
             kev: format!("{}/kev", server.base),
             epss: format!("{}/epss", server.base),
             cwe: format!("{}/cwe", server.base),
+            eol: format!("{}/eol", server.base),
+            php_releases: format!("{}/php", server.base),
             ..opencraysec_db::Endpoints::default()
         };
         let dir = tempfile::tempdir().expect("tmp");
@@ -1226,9 +1318,46 @@ mod tests {
             "CISA KEV: 1 entries",
             "EPSS: 1 scores",
             "CWE catalog: 1 entries",
+            "Runtime release data: 1 products",
+            "php.net releases: 1 release lines",
         ] {
             assert!(out.contains(want), "{want} missing from {out}");
         }
+
+        // The runtime scan reads what update stored, with no network involved.
+        let (code, out, _) =
+            run_it(&["opencraysec", "--data-dir", d, "scan-runtime", "php@7.4.33"]);
+        assert_eq!(
+            code, EXIT_FINDINGS,
+            "an end-of-life product is a finding: {out}"
+        );
+        assert!(
+            out.contains("php 7.4.33  EOL") && out.contains("end of life"),
+            "{out}"
+        );
+        let (code, out, _) =
+            run_it(&["opencraysec", "--data-dir", d, "scan-runtime", "php@8.4.26"]);
+        assert_eq!(
+            code, EXIT_FINDINGS,
+            "php.net is ahead of the aggregator: {out}"
+        );
+        assert!(out.contains("OUTDATED") && out.contains("8.4.27"), "{out}");
+        let (code, out, _) = run_it(&[
+            "opencraysec",
+            "--data-dir",
+            d,
+            "scan-runtime",
+            "php@8.4.27",
+            "--format",
+            "json",
+        ]);
+        assert_eq!(code, 0, "{out}");
+        assert!(out.contains("\"status\": \"current\""), "{out}");
+        let (code, _, err) = run_it(&["opencraysec", "--data-dir", d, "scan-runtime", "nonsense"]);
+        assert_eq!(code, EXIT_FAILED, "{err}");
+        let (code, out, _) =
+            run_it(&["opencraysec", "--data-dir", d, "scan-runtime", "nosuch@1.0"]);
+        assert_eq!(code, EXIT_INCOMPLETE, "nothing could be judged: {out}");
         let (code, out, _) = run_it(&["opencraysec", "--data-dir", d, "status"]);
         assert_eq!(code, 0);
         assert!(out.contains("\"Go\"") && out.contains("cwe_updated_at"));

@@ -4,12 +4,14 @@
 # The crates form layers, and a crate may depend on workspace crates below it only:
 #
 #   core                                  (leaf: package model, versions, OSV matching)
-#   lockfile, db                          -> core
-#   engine                                -> core, lockfile, db
+#   runtime                               (leaf: runtime products, release and end-of-life data)
+#   lockfile                              -> core
+#   db                                    -> core, runtime
+#   engine                                -> core, lockfile, db, runtime
 #   log                                   -> core, lockfile, db, engine
 #   web                                   -> log
 #   mcp                                   -> core, db, engine, log
-#   cli                                   -> core, lockfile, db, engine, log, web, mcp
+#   cli                                   -> core, lockfile, db, engine, log, web, mcp, runtime
 #
 # Rules:
 #   R1  a crate depends on workspace crates from its own row above and no others, in any
@@ -44,13 +46,14 @@ fi
 allowed() {
 	case "$1" in
 		opencraysec-core) echo "" ;;
+		opencraysec-runtime) echo "" ;;
 		opencraysec-lockfile) echo "opencraysec-core" ;;
-		opencraysec-db) echo "opencraysec-core" ;;
-		opencraysec-engine) echo "opencraysec-core opencraysec-lockfile opencraysec-db" ;;
+		opencraysec-db) echo "opencraysec-core opencraysec-runtime" ;;
+		opencraysec-engine) echo "opencraysec-core opencraysec-lockfile opencraysec-db opencraysec-runtime" ;;
 		opencraysec-log) echo "opencraysec-core opencraysec-lockfile opencraysec-db opencraysec-engine" ;;
 		opencraysec-web) echo "opencraysec-log" ;;
 		opencraysec-mcp) echo "opencraysec-core opencraysec-db opencraysec-engine opencraysec-log" ;;
-		opencraysec-cli) echo "opencraysec-core opencraysec-lockfile opencraysec-db opencraysec-engine opencraysec-log opencraysec-web opencraysec-mcp" ;;
+		opencraysec-cli) echo "opencraysec-core opencraysec-lockfile opencraysec-db opencraysec-engine opencraysec-log opencraysec-web opencraysec-mcp opencraysec-runtime" ;;
 		*) echo "" ;;
 	esac
 }

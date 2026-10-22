@@ -37,6 +37,16 @@ TLS verification, unsafe deserialization). Every hit is a lead: open the file, t
 report what you can show. Never repeat a secret's value; say where it is and that it must be rotated.
 Pass `external: ["gitleaks"]` for a deeper secret scan if it is installed.
 
+## The runtime underneath
+
+Lockfiles do not list the interpreter or the servers, so `scan_dependencies` cannot see a flaw in PHP,
+nginx or Node.js themselves. `scan_runtime` covers that: it detects what is installed on this machine (or
+checks `products` such as `php@8.2.30`, which is how to check a container you cannot run commands in) and
+says whether the release line is `eol` or `outdated`. It judges release lines, not CVEs, so never present
+`outdated` as "vulnerable to X" and never present `current` as safe: read its `notes`. If it reports
+`unknown` because no data is stored, offer `update_db` once. A version number older than upstream's latest
+may already be patched by the OS vendor; say so and point at the vendor's tracker.
+
 ## Rules
 
 - A clean scan means no known advisory matched the lockfile versions. It is not proof of security. Say

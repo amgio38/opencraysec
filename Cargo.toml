@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/core",
     "crates/lockfile",
+    "crates/runtime",
     "crates/db",
     "crates/engine",
     "crates/log",
@@ -26,6 +27,7 @@ keywords = ["security", "cve", "vulnerability", "mcp", "llm"]
 [workspace.dependencies]
 opencraysec-core = { path = "crates/core", version = "0.20261021.1" }
 opencraysec-lockfile = { path = "crates/lockfile", version = "0.20261021.1" }
+opencraysec-runtime = { path = "crates/runtime", version = "0.20261021.1" }
 opencraysec-db = { path = "crates/db", version = "0.20261021.1" }
 opencraysec-engine = { path = "crates/engine", version = "0.20261021.1" }
 opencraysec-log = { path = "crates/log", version = "0.20261021.1" }

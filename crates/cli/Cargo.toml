@@ -19,6 +19,7 @@ opencraysec-core.workspace = true
 opencraysec-engine.workspace = true
 opencraysec-log.workspace = true
 opencraysec-db.workspace = true
+opencraysec-runtime.workspace = true
 opencraysec-mcp.workspace = true
 opencraysec-web.workspace = true
 serde.workspace = true

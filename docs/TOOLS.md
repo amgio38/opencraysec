@@ -81,10 +81,28 @@ Result: `recorded`, `recorded_at`, `lockfile_changes_detected` (measured by comp
 snapshots, not taken from the caller), `baseline_found`, `ids_not_in_last_scan`. The caller's text is
 stored as AI-reported. Fails when logging is off.
 
+## scan_runtime
+
+Checks the interpreters, servers and databases the application runs on (PHP, nginx, Node.js, MySQL,
+...). No lockfile lists these, so a flaw in PHP itself is invisible to `scan_dependencies`. This tool
+judges release lines, not CVEs: `eol` means upstream no longer fixes that line, `outdated` means a newer
+patch release exists, `current` means neither, `unknown` means the data could not say. See
+[DATA-SOURCES.md](DATA-SOURCES.md#runtime-products).
+
+Argument: `products`, a list of `product@version` strings (`php@8.2.30`, `nodejs@20.11.0`). Without it
+the tool runs a fixed set of version commands on this machine (`php --version`, `nginx -v`, `node
+--version`, ...); with it nothing is executed, which is how to check a container or another machine.
+It reads only locally stored data and never uses the network; run `update_db` once to download it.
+
+Result: `scanned_at`, `data` (when the end-of-life data and each vendor feed were downloaded),
+`results` (per product: `product`, `version`, `source`, `status`, `cycle`, `eol_from`, `latest`,
+`patches_behind`, `advice`) and `notes`. **Read `notes`**: it says what was not looked at and why a
+distribution's older version number may already be patched.
+
 ## update_db
 
 Downloads or refreshes advisory data. Arguments: `ecosystems` (default: those already downloaded) and
-`enrich` (default `true`: also CISA KEV, EPSS and the MITRE CWE catalog). npm is several hundred MB.
+`enrich` (default `true`: also CISA KEV, EPSS, the MITRE CWE catalog and the runtime release data). npm is several hundred MB.
 Disabled with `--offline`. Result: one entry per source with its record count or error.
 
 ## db_status

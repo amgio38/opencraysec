@@ -72,6 +72,26 @@ write timeouts, a connection cap, an optional token compared in constant time, a
 inserts data with `textContent` only; the exported HTML embeds data with `<` escaped so it cannot
 close the script element.
 
+## Runtime products (`runtime`, `db::runtime_data`, `engine::runtime`)
+
+A second, smaller pipeline for what lockfiles do not list:
+
+```
+detect (fixed table of version commands)  ─┐
+product@version arguments                  ─┴─►  Input ─► evaluate ─► RuntimeReport
+ stored end-of-life data (endoflife.date) ─┐
+ stored vendor feed (php.net)              ─┴─►  newest patch per release line
+```
+
+- `crates/runtime` is a leaf crate with no network and no dependency on the rest of the workspace. It owns
+  the detector table, the version comparison and the verdicts (`eol`, `outdated`, `current`, `unknown`).
+- `db::runtime_data` downloads and stores the two feeds; a failing vendor feed does not fail an update.
+  A scan reads them without the network.
+- Verdicts talk about release lines, not CVEs, and every report says so. An unknown product or a version
+  outside every known line is `unknown`, never `current`.
+- Version commands are never taken from downloaded data. They are spawned without a shell, with no stdin,
+  a time limit and a cap on the output read.
+
 ## Adding an ecosystem
 
 1. Add a variant to `core::model::Ecosystem` (OSV name, aliases, name normalisation).
