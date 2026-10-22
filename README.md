@@ -23,6 +23,8 @@ your machine.
   advisories. See [docs/DATA-SOURCES.md](docs/DATA-SOURCES.md).
 - **Malicious packages**: reports from the [OpenSSF Malicious Packages](https://github.com/ossf/malicious-packages)
   project (through OSV) are flagged and listed first, with "remove it" instead of an upgrade command.
+- **Install-time code**: lists the npm packages whose lockfile says an install script runs code on
+  install, and names the lockfiles that cannot say (it is not a vulnerability, and never fails a gate).
 - **Ranked, not just listed**: malicious first, then exploited in the wild, then likely to be exploited, then CVSS.
 - **Is it actually used?** Usage evidence per finding from your own source: for Rust and Go down to the
   affected function. Findings your code does not import sink in the ranking (never hidden).

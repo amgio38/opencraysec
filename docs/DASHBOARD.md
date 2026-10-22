@@ -25,8 +25,9 @@ There is no TLS: put it behind a reverse proxy if you expose it beyond a trusted
 
 ## What it shows
 
-- Ten numbers: open findings, critical and high, malicious packages, exploited in the wild, used by your
-  code, confirmed fixed, changes recorded, suspected code issues, runtime products to review, scans.
+- Eleven numbers: open findings, critical and high, malicious packages, exploited in the wild, packages
+  that run code at install, used by your code, confirmed fixed, changes recorded, suspected code issues,
+  runtime products to review, scans.
 - Charts: findings over time by severity, severity now, the riskiest packages, whether your code uses
   the vulnerable packages, and daily activity. Charts use Chart.js, loaded from a CDN at a pinned
   version and checked with an integrity hash; without network access the page shows tables instead.
@@ -40,6 +41,9 @@ There is no TLS: put it behind a reverse proxy if you expose it beyond a trusted
   for a CycloneDX or SPDX file given as the path (usage is then `Unknown`: there is no source tree).
   Components of an SBOM that cannot be matched (operating-system packages, container images) appear in
   the notes at the top, never silently dropped.
+- **Install-time code**: the packages whose lockfile entry says an install step runs code, with their
+  lockfile. It is a list to review, not a vulnerability. A lockfile that cannot say is named in the notes
+  at the top, so an empty list is never read as "none" for it.
 - **Malicious packages** (OSV `MAL-` reports from OpenSSF Malicious Packages) have their own number, a
   `MALICIOUS` tag, a dashed line in the over-time chart, first place in the riskiest packages, "Not
   assessed" in the usage column (it is not checked for them) and "remove it" in the fix column. The line

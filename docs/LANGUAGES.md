@@ -17,6 +17,29 @@ reported as skipped rather than read.
 Every dependency found is recorded in the activity log's snapshot whatever `--ecosystem` narrows,
 so a later `record_fix` can tell what really changed.
 
+## Install-time code
+
+Some packages run code on the machine that installs them (an npm `postinstall` script, for example). It
+is how most native modules build, and it is also how a malicious package runs, so `scan` lists them
+apart from the vulnerabilities. It is not a vulnerability and never changes `--fail-on`.
+
+The list comes from the lockfile itself, never from running or downloading anything, and only some
+lockfiles record it:
+
+| Lockfile | Install scripts |
+| --- | --- |
+| `package-lock.json` (lockfileVersion 2 and 3) | Listed: the entry says `hasInstallScript`. |
+| `package-lock.json` (lockfileVersion 1) | **Cannot be told.** Its entries carry no install-script marker; regenerate it with a current npm. |
+| `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `composer.lock`, `go.mod`, the Python lockfiles, an SBOM | **Cannot be told.** This scan does not read it from these formats, and it does not guess. `Cargo.lock` in particular does not say which crates have a `build.rs` or are procedural macros. |
+
+A lockfile that cannot say is named in the report; its packages are not "free of install scripts", they
+are unknown. "None" is only claimed for lockfiles that do record it. The same list appears in
+`scan --format json` (`install_scripts`, `install_scripts_checked`, `install_scripts_unknown`), in SARIF
+(run properties) and in CycloneDX (a property on each such component).
+
+To stop them running, install with `npm ci --ignore-scripts`. opencraysec never changes your project or
+your npm settings.
+
 ## SBOM files
 
 `scan` and `scan_dependencies` also accept a CycloneDX or SPDX JSON file as the path, which is how to

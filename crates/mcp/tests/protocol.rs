@@ -567,3 +567,36 @@ fn client_info_without_a_version_and_unterminated_oversized_input() {
         .collect();
     assert_eq!(lines[0]["error"]["message"], "message too large");
 }
+
+#[test]
+fn scan_dependencies_lists_install_scripts_and_counts_the_ones_it_cuts() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let cfg = seeded(dir.path());
+    fs::write(
+        cfg.workspace.join("package-lock.json"),
+        r#"{"lockfileVersion":3,"packages":{
+          "node_modules/lodash":{"version":"4.17.4"},
+          "node_modules/native-a":{"version":"1.0.0","hasInstallScript":true},
+          "node_modules/native-b":{"version":"2.0.0","hasInstallScript":true}}}"#,
+    )
+    .expect("w");
+    let scan = call(
+        &cfg,
+        "scan_dependencies",
+        json!({"offline": true, "limit": 1}),
+    );
+    let s = &scan["structuredContent"];
+    assert_eq!(s["install_scripts_total"], 2);
+    assert_eq!(
+        s["install_scripts"].as_array().expect("arr").len(),
+        1,
+        "the list is cut to the limit, the total says how many exist"
+    );
+    assert_eq!(s["install_scripts"][0]["name"], "native-a");
+    assert!(
+        s["install_scripts_unknown"]
+            .as_array()
+            .expect("arr")
+            .is_empty()
+    );
+}

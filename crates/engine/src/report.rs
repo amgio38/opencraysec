@@ -11,6 +11,16 @@ use crate::scan::ScanReport;
 /// What to do about a malicious package that has no clean version: upgrading is not the fix.
 pub const REMOVE_ADVICE: &str = "remove it; check whether its install scripts already ran and rotate secrets that machine could reach";
 
+/// Most install-script packages listed by name in one place; the rest are counted.
+const MAX_LISTED: usize = 20;
+
+/// True when the lockfile says an install step runs code for this package.
+fn runs_install_script(r: &ScanReport, p: &Package) -> bool {
+    r.install_scripts
+        .iter()
+        .any(|s| s.ecosystem == p.ecosystem && s.name == p.name && s.version == p.version)
+}
+
 /// Percent-encodes the characters that are not allowed in a purl name segment.
 fn enc(s: &str) -> String {
     let mut out = String::new();
@@ -151,6 +161,11 @@ fn disclosure(r: &ScanReport) -> Value {
         "skipped": r.skipped.iter().map(|(f, why)| json!({ "file": f, "reason": why })).collect::<Vec<_>>(),
         "unchecked": r.unchecked.iter().map(|(f, why)| json!({ "file": f, "reason": why })).collect::<Vec<_>>(),
         "lockfiles": r.lockfiles,
+        "installScripts": {
+            "checkedLockfiles": r.install_scripts_checked,
+            "packages": r.install_scripts.iter().map(|p| json!({ "purl": purl(p), "name": p.name, "version": p.version, "file": p.source })).collect::<Vec<_>>(),
+            "undetermined": r.install_scripts_unknown.iter().map(|(f, why)| json!({ "file": f, "reason": why })).collect::<Vec<_>>(),
+        },
         "dataSources": r.data_sources.iter().map(|d| {
             let mut v = json!({ "ecosystem": d.ecosystem, "mode": d.mode, "packages": d.packages });
             if let Some(u) = &d.updated_at {
@@ -174,6 +189,30 @@ fn disclosure_lines(r: &ScanReport) -> Vec<String> {
             .iter()
             .map(|(f, why)| format!("unchecked {f}: {why}")),
     );
+    if !r.install_scripts.is_empty() {
+        let names: Vec<String> = r
+            .install_scripts
+            .iter()
+            .take(MAX_LISTED)
+            .map(|p| format!("{}@{}", p.name, p.version))
+            .collect();
+        let more = r.install_scripts.len().saturating_sub(MAX_LISTED);
+        out.push(format!(
+            "{} package(s) run code when installed (install script): {}{}",
+            r.install_scripts.len(),
+            names.join(", "),
+            if more > 0 {
+                format!(" and {more} more")
+            } else {
+                String::new()
+            }
+        ));
+    }
+    out.extend(
+        r.install_scripts_unknown
+            .iter()
+            .map(|(f, why)| format!("install-time code not determined for {f}: {why}")),
+    );
     for d in &r.data_sources {
         out.push(match (d.mode.as_str(), &d.updated_at) {
             ("none", _) => format!(
@@ -193,10 +232,15 @@ pub fn cyclonedx(r: &ScanReport) -> Value {
         .packages
         .iter()
         .map(|p| {
-            json!({
+            let mut c = json!({
                 "type": "library", "bom-ref": purl(p), "name": p.name,
                 "version": p.version, "purl": purl(p),
-            })
+            });
+            if runs_install_script(r, p) {
+                c["properties"] =
+                    json!([{ "name": "opencraysec:install-script", "value": "true" }]);
+            }
+            c
         })
         .collect();
     let vulns: Vec<Value> = r
@@ -240,6 +284,40 @@ pub fn cyclonedx(r: &ScanReport) -> Value {
         },
         "components": components, "vulnerabilities": vulns,
     })
+}
+
+/// The "install-time code" part of the text report. It is not a vulnerability list: it names the
+/// packages whose lockfile entry says an install step runs code, and the lockfiles that cannot say.
+fn install_scripts_text(r: &ScanReport) -> String {
+    let mut s = String::new();
+    if !r.install_scripts.is_empty() {
+        let _ = writeln!(
+            s,
+            "\nInstall-time code: {} package(s) run a script when installed. This is not a vulnerability \
+             (many are native modules being built), but it is how a malicious package runs, so review \
+             the ones you do not expect.",
+            r.install_scripts.len()
+        );
+        for p in r.install_scripts.iter().take(MAX_LISTED) {
+            let _ = writeln!(s, "    {}@{}   ({})", p.name, p.version, p.source);
+        }
+        if r.install_scripts.len() > MAX_LISTED {
+            let _ = writeln!(
+                s,
+                "    ... and {} more (see --format json)",
+                r.install_scripts.len() - MAX_LISTED
+            );
+        }
+    } else if !r.install_scripts_checked.is_empty() {
+        let _ = writeln!(
+            s,
+            "\nInstall-time code: no package in the lockfiles that record it runs an install script."
+        );
+    }
+    for (file, why) in &r.install_scripts_unknown {
+        let _ = writeln!(s, "install-time code not determined for {file}: {why}");
+    }
+    s
 }
 
 /// Human-readable summary.
@@ -289,6 +367,12 @@ pub fn text(r: &ScanReport) -> String {
         if !f.cwes.is_empty() {
             let _ = writeln!(s, "    weakness: {}", f.cwes.join(", "));
         }
+        if f.malicious && runs_install_script(r, &f.package) {
+            let _ = writeln!(
+                s,
+                "    its lockfile entry says it runs an install script: its code may already have run"
+            );
+        }
         if let Some(r) = &f.reachability {
             let label = match r.level.as_str() {
                 "used_symbol" => "YOUR CODE CALLS AN AFFECTED FUNCTION",
@@ -323,6 +407,7 @@ pub fn text(r: &ScanReport) -> String {
             r.informational_omitted
         );
     }
+    s.push_str(&install_scripts_text(r));
     for (file, why) in &r.skipped {
         let _ = writeln!(s, "skipped {file}: {why}");
     }
@@ -416,6 +501,13 @@ mod tests {
     use super::*;
     use opencraysec_core::Finding;
 
+    fn npm_pkg(name: &str, source: &str) -> Package {
+        Package {
+            source: source.into(),
+            ..pkg(Ecosystem::Npm, name, "1.0.0")
+        }
+    }
+
     fn pkg(eco: Ecosystem, name: &str, v: &str) -> Package {
         Package {
             ecosystem: eco,
@@ -462,6 +554,9 @@ mod tests {
             data_sources: vec![],
             notes: vec!["n".into()],
             informational_omitted: 0,
+            install_scripts: vec![],
+            install_scripts_checked: vec![],
+            install_scripts_unknown: vec![],
             findings: vec![Finding {
                 id: "GHSA-1".into(),
                 aliases: vec![],
@@ -523,6 +618,118 @@ mod tests {
         assert_eq!(v["ratings"][0]["method"], "other");
         assert_eq!(v["recommendation"], REMOVE_ADVICE);
         assert_eq!(v["properties"][0]["name"], "opencraysec:malicious");
+    }
+
+    fn with_install_scripts(mut r: ScanReport, n: usize) -> ScanReport {
+        r.install_scripts = (0..n)
+            .map(|i| npm_pkg(&format!("native{i:02}"), "web/package-lock.json"))
+            .collect();
+        r.install_scripts_unknown = vec![("Cargo.lock".into(), "Cargo.lock does not say".into())];
+        r
+    }
+
+    #[test]
+    fn install_time_code_is_listed_with_its_gaps_in_every_format() {
+        let r = with_install_scripts(sample(), 2);
+        let t = text(&r);
+        assert!(
+            t.contains("Install-time code: 2 package(s) run a script when installed"),
+            "{t}"
+        );
+        assert!(
+            t.contains("native00@1.0.0   (web/package-lock.json)"),
+            "{t}"
+        );
+        assert!(
+            t.contains("install-time code not determined for Cargo.lock: Cargo.lock does not say"),
+            "{t}"
+        );
+        assert!(t.contains("not a vulnerability"), "{t}");
+
+        let s = sarif(&r);
+        let props = &s["runs"][0]["properties"]["installScripts"];
+        assert_eq!(props["packages"][1]["name"], "native01");
+        assert_eq!(props["packages"][0]["purl"], "pkg:npm/native00@1.0.0");
+        assert_eq!(props["undetermined"][0]["file"], "Cargo.lock");
+        let notes = s["runs"][0]["invocations"][0]["toolExecutionNotifications"].to_string();
+        assert!(
+            notes.contains("2 package(s) run code when installed"),
+            "{notes}"
+        );
+        assert!(
+            notes.contains("install-time code not determined for Cargo.lock"),
+            "{notes}"
+        );
+    }
+
+    #[test]
+    fn cyclonedx_marks_only_the_components_that_run_code_when_installed() {
+        let mut r = sample();
+        r.packages = vec![npm_pkg("native00", "p"), npm_pkg("quiet", "p")];
+        let r = with_install_scripts(r, 1);
+        let c = cyclonedx(&r);
+        assert_eq!(
+            c["components"][0]["properties"][0]["name"],
+            "opencraysec:install-script"
+        );
+        assert!(c["components"][1].get("properties").is_none());
+    }
+
+    #[test]
+    fn a_long_install_script_list_is_cut_in_the_text_but_not_in_json() {
+        let r = with_install_scripts(sample(), MAX_LISTED + 5);
+        let t = text(&r);
+        assert!(t.contains("... and 5 more (see --format json)"), "{t}");
+        assert!(!t.contains(&format!("native{:02}@", MAX_LISTED)), "{t}");
+        let s = sarif(&r);
+        assert_eq!(
+            s["runs"][0]["properties"]["installScripts"]["packages"]
+                .as_array()
+                .expect("arr")
+                .len(),
+            MAX_LISTED + 5
+        );
+        assert!(
+            s["runs"][0]["invocations"][0]["toolExecutionNotifications"]
+                .to_string()
+                .contains("and 5 more")
+        );
+    }
+
+    #[test]
+    fn nothing_recorded_is_only_claimed_when_a_lockfile_can_say() {
+        let mut r = sample();
+        r.lockfiles = vec!["package-lock.json".into()];
+        r.install_scripts_checked = vec!["package-lock.json".into()];
+        assert!(
+            text(&r).contains("no package in the lockfiles that record it runs an install script")
+        );
+        // The only lockfile cannot say: nothing is claimed, the gap is named.
+        r.install_scripts_checked.clear();
+        r.install_scripts_unknown = vec![("package-lock.json".into(), "v1".into())];
+        let t = text(&r);
+        assert!(
+            !t.contains("Install-time code:"),
+            "the only lockfile cannot say: {t}"
+        );
+        assert!(t.contains("install-time code not determined for package-lock.json"));
+        // No lockfile at all.
+        r.lockfiles.clear();
+        r.install_scripts_unknown.clear();
+        assert!(!text(&r).contains("Install-time code"));
+    }
+
+    #[test]
+    fn a_malicious_package_that_runs_an_install_script_says_so() {
+        let mut r = malicious_sample();
+        r.install_scripts = vec![r.findings[0].package.clone()];
+        let t = text(&r);
+        assert!(
+            t.contains("its lockfile entry says it runs an install script"),
+            "{t}"
+        );
+        let r = malicious_sample();
+        assert!(!text(&r).contains("its lockfile entry says"));
     }
 
     #[test]

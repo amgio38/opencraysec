@@ -55,6 +55,16 @@ fn scan_notes(e: &Event) -> Value {
             out.push(Value::String(format!("{label} {file}: {why}")));
         }
     }
+    for pair in array_of(&e.data, "install_scripts_unknown") {
+        if let (Some(file), Some(why)) = (
+            pair.get(0).and_then(Value::as_str),
+            pair.get(1).and_then(Value::as_str),
+        ) {
+            out.push(Value::String(format!(
+                "install-time code not determined for {file}: {why}"
+            )));
+        }
+    }
     Value::Array(out)
 }
 
@@ -332,6 +342,12 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
                 .unwrap_or(false)
         })
         .count();
+    let install_scripts_total = latest_scan
+        .and_then(|e| e.data.get("install_scripts_total").and_then(Value::as_u64))
+        .unwrap_or(0);
+    let install_scripts: Vec<Value> = latest_scan
+        .map(|e| array_of(&e.data, "install_scripts").to_vec())
+        .unwrap_or_default();
     let malicious_open = findings
         .iter()
         .filter(|f| {
@@ -360,6 +376,7 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
             "open_critical_high": open_high,
             "exploited_open": exploited_open,
             "malicious_open": malicious_open,
+            "install_scripts": install_scripts_total,
             "used_in_code": used_open,
             "resolved_verified": resolved_ids.len(),
             "recorded_fixes": fixes.iter().filter(|f| str_of(f, "kind") == "recorded").count(),
@@ -375,6 +392,7 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
         "reachability": reach,
         "top_packages": top_packages,
         "timeline": timeline,
+        "install_scripts": install_scripts,
         "activity": activity,
         "findings": findings,
         "data_sources": latest_scan.map(|e| e.data.get("data_sources").cloned().unwrap_or(json!([]))),

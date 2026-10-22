@@ -78,6 +78,15 @@ pub fn scan_event(r: &ScanReport, client: Option<&str>) -> Event {
             "by_severity": severity_counts(r.findings.iter().map(|f| &f.severity)),
             "exploited": r.findings.iter().filter(|f| f.known_exploited).count(),
             "malicious": r.findings.iter().filter(|f| f.malicious).count(),
+            "install_scripts_total": r.install_scripts.len(),
+            "install_scripts": r.install_scripts.iter().take(MAX_LIST).map(|p| json!({
+                "package": p.name,
+                "version": p.version,
+                "ecosystem": p.ecosystem.osv_name(),
+                "source": p.source,
+                "dev": p.dev,
+            })).collect::<Vec<_>>(),
+            "install_scripts_unknown": r.install_scripts_unknown,
             "findings": findings,
         }),
     )
@@ -538,6 +547,9 @@ mod tests {
             data_sources: vec![],
             notes: vec![],
             informational_omitted: 0,
+            install_scripts: vec![],
+            install_scripts_checked: vec![],
+            install_scripts_unknown: vec![],
             findings: vec![],
             packages: vec![],
             all_packages: vec![],
@@ -592,6 +604,9 @@ mod tests {
             data_sources: vec![],
             notes: vec![],
             informational_omitted: 0,
+            install_scripts: vec![],
+            install_scripts_checked: vec![],
+            install_scripts_unknown: vec![],
             findings: vec![mal, plain],
             packages: vec![],
             all_packages: vec![],
@@ -603,6 +618,49 @@ mod tests {
         let s = crate::summary::summarize(&[ev], Some("/p"));
         assert_eq!(s["kpis"]["malicious_open"], 1);
         assert_eq!(s["kpis"]["open"], 2);
+    }
+
+    #[test]
+    fn install_scripts_reach_the_event_the_notes_and_the_dashboard_numbers() {
+        use opencraysec_core::{Ecosystem, Package};
+        let native = Package {
+            ecosystem: Ecosystem::Npm,
+            name: "native".into(),
+            version: "1.2.3".into(),
+            source: "package-lock.json".into(),
+            dev: true,
+        };
+        let report = ScanReport {
+            root: "/p".into(),
+            scanned_at: "t".into(),
+            lockfiles: vec!["package-lock.json".into(), "Cargo.lock".into()],
+            skipped: vec![],
+            unchecked: vec![],
+            packages_checked: 2,
+            data_sources: vec![],
+            notes: vec![],
+            informational_omitted: 0,
+            install_scripts: vec![native],
+            install_scripts_checked: vec!["package-lock.json".into()],
+            install_scripts_unknown: vec![("Cargo.lock".into(), "no build.rs record".into())],
+            findings: vec![],
+            packages: vec![],
+            all_packages: vec![],
+        };
+        let ev = scan_event(&report, None);
+        assert_eq!(ev.data["install_scripts_total"], 1);
+        assert_eq!(ev.data["install_scripts"][0]["package"], "native");
+        assert_eq!(ev.data["install_scripts"][0]["ecosystem"], "npm");
+        assert_eq!(ev.data["install_scripts"][0]["dev"], true);
+        assert_eq!(ev.data["install_scripts_unknown"][0][0], "Cargo.lock");
+        let s = crate::summary::summarize(&[ev], Some("/p"));
+        assert_eq!(s["kpis"]["install_scripts"], 1);
+        assert_eq!(s["install_scripts"][0]["version"], "1.2.3");
+        let notes = s["notes"].to_string();
+        assert!(
+            notes.contains("install-time code not determined for Cargo.lock: no build.rs record"),
+            "{notes}"
+        );
     }
 
     #[test]

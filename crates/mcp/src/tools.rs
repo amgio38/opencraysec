@@ -217,6 +217,10 @@ fn summarize(report: &ScanReport, limit: usize) -> Value {
     if let Some(f) = v.get_mut("findings").and_then(|f| f.as_array_mut()) {
         f.truncate(limit);
     }
+    if let Some(a) = v.get_mut("install_scripts").and_then(|x| x.as_array_mut()) {
+        a.truncate(limit);
+    }
+    v["install_scripts_total"] = json!(report.install_scripts.len());
     v["findings_total"] = json!(total);
     v["findings_returned"] = json!(total.min(limit));
     v["by_severity"] = Value::Object(counts);

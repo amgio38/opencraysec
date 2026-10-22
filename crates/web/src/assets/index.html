@@ -48,6 +48,12 @@
   </section>
 
   <section class="block">
+    <h2>Install-time code</h2>
+    <div class="desc">Packages whose lockfile entry says an install step runs code on the machine that installs them (npm <span class="mono">hasInstallScript</span>). This is not a vulnerability: many are native modules being built. It is also how a malicious package runs, so look at the ones you do not expect. A lockfile that cannot say is named in the notes at the top.</div>
+    <div class="tablewrap"><table id="installs"><thead></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="block">
     <h2>Runtime products (PHP, nginx, ...)</h2>
     <div class="desc">What the application runs on, from the latest <span class="mono">scan-runtime</span>: whether the release line is still supported and on its newest patch, and, when NVD was asked, the CVEs it lists for that exact version. Release lines, not a scan of libraries.</div>
     <div class="tablewrap"><table id="runtime"><thead></thead><tbody></tbody></table></div>

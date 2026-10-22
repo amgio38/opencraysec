@@ -49,6 +49,50 @@ pub struct Discovery {
     /// Lockfiles that were read but hold dependencies the scan cannot check (unpinned or
     /// included requirements), with how many and why.
     pub unchecked: Vec<(String, String)>,
+    /// Packages whose lockfile entry says an install step runs code (npm `hasInstallScript`).
+    /// Deduplicated. Only lockfiles that record it contribute; see `install_scripts_unknown`.
+    pub install_scripts: Vec<Package>,
+    /// Lockfiles that record install scripts, so an empty `install_scripts` for them means "none".
+    pub install_scripts_checked: Vec<String>,
+    /// Lockfiles that were read but cannot say which packages run code when installed.
+    pub install_scripts_unknown: Vec<InstallScriptGap>,
+}
+
+/// A lockfile that cannot say which of its packages run code when installed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallScriptGap {
+    /// The lockfile, relative to the scan root.
+    pub file: String,
+    /// The ecosystem its packages belong to; `None` for an SBOM, which can mix several.
+    pub ecosystem: Option<Ecosystem>,
+    /// Why it cannot be told.
+    pub reason: String,
+}
+
+/// The ecosystem a lockfile kind belongs to.
+fn ecosystem_of_kind(kind: &str) -> Option<Ecosystem> {
+    match kind {
+        "cargo" => Some(Ecosystem::CratesIo),
+        "npm" | "yarn" | "pnpm" => Some(Ecosystem::Npm),
+        "composer" => Some(Ecosystem::Packagist),
+        "gomod" | "gosum" => Some(Ecosystem::Go),
+        "poetry" | "uv" | "pipfile" | "requirements" => Some(Ecosystem::PyPI),
+        _ => None,
+    }
+}
+
+/// Why a lockfile of this kind cannot say which packages run code when installed.
+fn install_scripts_reason(kind: &str) -> &'static str {
+    match kind {
+        "cargo" => "Cargo.lock does not say which crates have build scripts or procedural macros",
+        "npm" => {
+            "this package-lock.json is lockfileVersion 1, whose entries carry no install-script marker; regenerate it with a current npm"
+        }
+        "sbom" => "this scan cannot tell from an SBOM which components run code when installed",
+        _ => {
+            "this scan cannot tell from this lockfile format which packages run code when installed"
+        }
+    }
 }
 
 /// Which parser handles a file name, if any. SBOMs are not listed here: they are recognised by being
@@ -128,6 +172,7 @@ pub fn discover(root: &Path, only: Option<&[Ecosystem]>) -> Discovery {
     };
     let mut d = Discovery::default();
     let mut seen: BTreeSet<Package> = BTreeSet::new();
+    let mut install_scripts: BTreeSet<Package> = BTreeSet::new();
     // requirements files: (file, lines that cannot be matched, files it includes with `-r`).
     // Whether an include is covered depends on which files were parsed, so it is judged at the end.
     let mut requirement_files: Vec<(String, usize, Vec<String>)> = Vec::new();
@@ -165,6 +210,7 @@ pub fn discover(root: &Path, only: Option<&[Ecosystem]>) -> Discovery {
                 continue;
             }
         };
+        let mut scripts: Option<Vec<Package>> = None;
         let parsed = if kind == "sbom" {
             sbom::parse(&text, &rel).map(|(packages, note)| {
                 if let Some(n) = note {
@@ -172,11 +218,27 @@ pub fn discover(root: &Path, only: Option<&[Ecosystem]>) -> Discovery {
                 }
                 packages
             })
+        } else if kind == "npm" {
+            js::package_lock_full(&text, &rel).map(|l| {
+                scripts = l.install_scripts;
+                l.packages
+            })
         } else {
             parse_text(kind, &text, &rel)
         };
         match parsed {
             Ok(pkgs) => {
+                match scripts {
+                    Some(list) => {
+                        d.install_scripts_checked.push(rel.clone());
+                        install_scripts.extend(list);
+                    }
+                    None => d.install_scripts_unknown.push(InstallScriptGap {
+                        file: rel.clone(),
+                        ecosystem: ecosystem_of_kind(kind),
+                        reason: install_scripts_reason(kind).to_string(),
+                    }),
+                }
                 if kind == "requirements" {
                     requirement_files.push((
                         rel.clone(),
@@ -195,6 +257,10 @@ pub fn discover(root: &Path, only: Option<&[Ecosystem]>) -> Discovery {
         }
     }
     d.packages = seen.into_iter().collect();
+    d.install_scripts = install_scripts
+        .into_iter()
+        .filter(|p| only.is_none_or(|o| o.contains(&p.ecosystem)))
+        .collect();
     let scanned: BTreeSet<&str> = d.parsed.iter().map(String::as_str).collect();
     for (rel, unmatched, includes) in requirement_files {
         // `-r base.txt` is fine when base.txt was scanned too; otherwise its pins were not seen.
@@ -414,5 +480,88 @@ mod tests {
         assert_eq!(relative_name(&base.join("b.txt"), base), "b.txt");
         // Outside the base it stays as given, still `/`-separated.
         assert_eq!(relative_name(&Path::new("x").join("y"), base), "x/y");
+    }
+
+    #[test]
+    fn install_scripts_are_listed_and_the_lockfiles_that_cannot_say_are_named() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let r = dir.path();
+        write(
+            r,
+            "web/package-lock.json",
+            r#"{"lockfileVersion":3,"packages":{
+              "node_modules/native":{"version":"1.2.3","hasInstallScript":true},
+              "node_modules/quiet":{"version":"3.0.0"}}}"#,
+        );
+        write(
+            r,
+            "old/package-lock.json",
+            r#"{"lockfileVersion":1,"dependencies":{"a":{"version":"1.0.0"}}}"#,
+        );
+        write(
+            r,
+            "Cargo.lock",
+            "[[package]]\nname = \"a\"\nversion = \"1.0.0\"\nsource = \"registry+x\"\n",
+        );
+        write(r, "svc/yarn.lock", "a@^1:\n  version \"1.0.0\"\n");
+        let d = discover(r, None);
+        let scripts: Vec<&str> = d.install_scripts.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(scripts, vec!["native"]);
+        assert_eq!(
+            d.install_scripts_checked,
+            vec!["web/package-lock.json"],
+            "only the lockfile that records install scripts can say 'none'"
+        );
+        let gaps: Vec<(&str, Option<Ecosystem>)> = d
+            .install_scripts_unknown
+            .iter()
+            .map(|g| (g.file.as_str(), g.ecosystem))
+            .collect();
+        for want in [
+            ("Cargo.lock", Some(Ecosystem::CratesIo)),
+            ("old/package-lock.json", Some(Ecosystem::Npm)),
+            ("svc/yarn.lock", Some(Ecosystem::Npm)),
+        ] {
+            assert!(gaps.contains(&want), "{want:?} in {gaps:?}");
+        }
+        assert_eq!(gaps.len(), 3, "the v3 lockfile can say, so it is not a gap");
+        let reason = |file: &str| {
+            d.install_scripts_unknown
+                .iter()
+                .find(|g| g.file == file)
+                .map(|g| g.reason.clone())
+                .expect("gap")
+        };
+        assert!(reason("old/package-lock.json").contains("lockfileVersion 1"));
+        assert!(reason("Cargo.lock").contains("build scripts"));
+        assert!(reason("svc/yarn.lock").contains("this lockfile format"));
+    }
+
+    #[test]
+    fn an_ecosystem_filter_also_narrows_the_install_script_list() {
+        let dir = tempfile::tempdir().expect("tmp");
+        write(
+            dir.path(),
+            "package-lock.json",
+            r#"{"lockfileVersion":3,"packages":{"node_modules/native":{"version":"1.0.0","hasInstallScript":true}}}"#,
+        );
+        assert_eq!(discover(dir.path(), None).install_scripts.len(), 1);
+        assert!(
+            discover(dir.path(), Some(&[Ecosystem::CratesIo]))
+                .install_scripts
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn an_sbom_and_every_other_kind_name_a_reason() {
+        for kind in ["sbom", "pnpm", "composer", "gomod", "uv", "requirements"] {
+            assert!(!install_scripts_reason(kind).is_empty(), "{kind}");
+        }
+        assert!(install_scripts_reason("sbom").contains("SBOM"));
+        assert_eq!(ecosystem_of_kind("sbom"), None);
+        assert_eq!(ecosystem_of_kind("composer"), Some(Ecosystem::Packagist));
+        assert_eq!(ecosystem_of_kind("gosum"), Some(Ecosystem::Go));
+        assert_eq!(ecosystem_of_kind("pipfile"), Some(Ecosystem::PyPI));
     }
 }

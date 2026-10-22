@@ -27,12 +27,28 @@ fn walk_v1(
     }
 }
 
+/// What a `package-lock.json` yields.
+pub struct NpmLock {
+    /// Every registry package in the lockfile.
+    pub packages: Vec<Package>,
+    /// The packages whose entry says an install step runs code (`hasInstallScript`). `None` when the
+    /// format cannot say: lockfileVersion 1 has no per-package record of it.
+    pub install_scripts: Option<Vec<Package>>,
+}
+
 /// `package-lock.json` (lockfileVersion 1, 2 and 3).
 pub fn package_lock(text: &str, source: &str) -> Result<Vec<Package>, String> {
+    package_lock_full(text, source).map(|l| l.packages)
+}
+
+/// Like [`package_lock`], and also the packages that run code when installed.
+pub fn package_lock_full(text: &str, source: &str) -> Result<NpmLock, String> {
     let v: serde_json::Value =
         serde_json::from_str(text).map_err(|e| format!("invalid package-lock.json: {e}"))?;
     let mut out = Vec::new();
+    let mut scripts = None;
     if let Some(pkgs) = v.get("packages").and_then(|x| x.as_object()) {
+        let mut with_scripts = Vec::new();
         for (key, info) in pkgs {
             if key.is_empty() || info.get("link").and_then(|x| x.as_bool()) == Some(true) {
                 continue;
@@ -48,12 +64,20 @@ pub fn package_lock(text: &str, source: &str) -> Result<Vec<Package>, String> {
                 continue;
             };
             let dev = info.get("dev").and_then(|x| x.as_bool()).unwrap_or(false);
-            out.push(npm(name, version, source, dev));
+            let p = npm(name, version, source, dev);
+            if info.get("hasInstallScript").and_then(|x| x.as_bool()) == Some(true) {
+                with_scripts.push(p.clone());
+            }
+            out.push(p);
         }
+        scripts = Some(with_scripts);
     } else if let Some(deps) = v.get("dependencies").and_then(|x| x.as_object()) {
         walk_v1(deps, source, &mut out);
     }
-    Ok(out)
+    Ok(NpmLock {
+        packages: out,
+        install_scripts: scripts,
+    })
 }
 
 fn unquote(s: &str) -> &str {
@@ -179,5 +203,38 @@ mod tests {
         assert_eq!(p.len(), 3);
         let v5 = "packages:\n  /lodash/4.17.4:\n    dev: false\n  /@a/b/1.0.0:\n    dev: true\n";
         assert_eq!(pnpm_lock(v5, "x").len(), 2);
+    }
+
+    #[test]
+    fn install_scripts_come_from_has_install_script_in_v2_and_v3() {
+        let v3 = r#"{"lockfileVersion":3,"packages":{
+          "":{"name":"app","hasInstallScript":true},
+          "node_modules/native":{"version":"1.2.3","hasInstallScript":true},
+          "node_modules/dev-native":{"version":"2.0.0","dev":true,"hasInstallScript":true},
+          "node_modules/quiet":{"version":"3.0.0"},
+          "node_modules/explicit-no":{"version":"4.0.0","hasInstallScript":false},
+          "node_modules/ln":{"link":true,"hasInstallScript":true,"resolved":"x"},
+          "node_modules/odd":{"version":"5.0.0","hasInstallScript":"yes"}}}"#;
+        let l = package_lock_full(v3, "package-lock.json").expect("parses");
+        assert_eq!(l.packages.len(), 5);
+        let scripts = l.install_scripts.expect("v3 can say");
+        let names: Vec<(&str, bool)> = scripts.iter().map(|p| (p.name.as_str(), p.dev)).collect();
+        assert_eq!(
+            names,
+            vec![("dev-native", true), ("native", false)],
+            "the root, links, false and non-boolean values are not install scripts"
+        );
+    }
+
+    #[test]
+    fn a_lockfile_that_cannot_say_reports_none_not_an_empty_list() {
+        let v1 = r#"{"lockfileVersion":1,"dependencies":{"a":{"version":"1.0.0","requires":{}}}}"#;
+        let l = package_lock_full(v1, "package-lock.json").expect("parses");
+        assert_eq!(l.packages.len(), 1);
+        assert!(l.install_scripts.is_none());
+        let v3_none = r#"{"lockfileVersion":3,"packages":{"node_modules/a":{"version":"1.0.0"}}}"#;
+        let l = package_lock_full(v3_none, "p").expect("parses");
+        assert_eq!(l.install_scripts, Some(vec![]));
+        assert!(package_lock_full("not json", "p").is_err());
     }
 }

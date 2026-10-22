@@ -54,6 +54,7 @@
     box.appendChild(kpi('Critical + high', k.open_critical_high, 'fix these first', k.open_critical_high ? 'bad' : 'good'));
     box.appendChild(kpi('Malicious packages', k.malicious_open || 0, 'OpenSSF Malicious Packages', k.malicious_open ? 'bad' : 'good'));
     box.appendChild(kpi('Exploited in the wild', k.exploited_open, 'CISA KEV', k.exploited_open ? 'bad' : 'good'));
+    box.appendChild(kpi('Run code at install', k.install_scripts || 0, 'review, not a vulnerability', ''));
     box.appendChild(kpi('Used by your code', k.used_in_code, 'calls an affected function', k.used_in_code ? 'bad' : ''));
     box.appendChild(kpi('Confirmed fixed', k.resolved_verified, 'verified by a re-scan', 'good'));
     box.appendChild(kpi('Changes recorded', k.recorded_fixes, 'reported by the AI'));
@@ -299,6 +300,29 @@
     });
   }
 
+  function renderInstalls(s) {
+    var thead = document.querySelector('#installs thead'), tbody = document.querySelector('#installs tbody');
+    clear(thead); clear(tbody);
+    var tr = h('tr');
+    ['Package', 'Version', 'Ecosystem', 'Lockfile'].forEach(function (t) { tr.appendChild(h('th', { text: t })); });
+    thead.appendChild(tr);
+    var list = s.install_scripts || [], total = (s.kpis || {}).install_scripts || 0;
+    if (!list.length) {
+      tbody.appendChild(h('tr', null, h('td', { colspan: '4', class: 'empty', text: 'No package in the latest scan is recorded as running an install script. Lockfiles that cannot say are listed in the notes at the top.' })));
+      return;
+    }
+    list.forEach(function (p) {
+      tbody.appendChild(h('tr', null,
+        h('td', null, h('div', { text: p.package }), p.dev ? h('div', { class: 'sub', text: 'development only' }) : null),
+        h('td', { class: 'mono', text: p.version }),
+        h('td', { text: p.ecosystem }),
+        h('td', { class: 'mono', text: p.source })));
+    });
+    if (total > list.length) {
+      tbody.appendChild(h('tr', null, h('td', { colspan: '4', class: 'empty', text: '... and ' + (total - list.length) + ' more (see the JSON report).' })));
+    }
+  }
+
   var RUNTIME_BADGE = { eol: 'high', outdated: 'medium', current: 'low', unknown: 'unknown' };
 
   function renderRuntime(s) {
@@ -364,7 +388,7 @@
       $('kpis').appendChild(h('div', { class: 'empty card', text: 'The log is empty. Run a scan (opencraysec scan, or the MCP tool scan_dependencies) and reload.' }));
       return;
     }
-    renderMeta(s); renderKpis(s); renderCharts(s); renderFixes(s); renderFindings(s); renderRuntime(s); renderCode(s);
+    renderMeta(s); renderKpis(s); renderCharts(s); renderFixes(s); renderFindings(s); renderInstalls(s); renderRuntime(s); renderCode(s);
   }
 
   function fillWorkspaces(s, onChange) {

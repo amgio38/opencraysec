@@ -79,6 +79,15 @@ pub struct ScanReport {
     pub informational_omitted: usize,
     /// Findings, most urgent first.
     pub findings: Vec<Finding>,
+    /// Packages whose lockfile entry says an install step runs code. Not a vulnerability: code that
+    /// runs when a package is installed is how most native modules build, and how a malicious one
+    /// runs too, so it is listed for review.
+    pub install_scripts: Vec<Package>,
+    /// Lockfiles that do record install scripts: an empty list is only "none" for these.
+    pub install_scripts_checked: Vec<String>,
+    /// Lockfiles that cannot say which packages run code when installed, with why. A package in
+    /// them is not "free of install scripts": it is unknown.
+    pub install_scripts_unknown: Vec<(String, String)>,
     /// Every package checked (used for SBOM output, not serialised in JSON).
     #[serde(skip)]
     pub packages: Vec<Package>,
@@ -324,6 +333,36 @@ pub fn scan(store: &Store, root: &Path, opts: &ScanOptions) -> Result<ScanReport
     // the activity log can snapshot the whole dependency state.
     let disc = opencraysec_lockfile::discover(root, None);
     let all_packages = disc.packages.clone();
+    let keep_ecosystem = |e: Ecosystem| {
+        opts.ecosystems
+            .as_ref()
+            .is_none_or(|list| list.contains(&e))
+    };
+    let keep = |p: &Package| keep_ecosystem(p.ecosystem) && (opts.include_dev || !p.dev);
+    let install_scripts: Vec<Package> = disc
+        .install_scripts
+        .iter()
+        .filter(|p| keep(p))
+        .cloned()
+        .collect();
+    // Only npm lockfiles record install scripts, so they count as checked only when npm is in scope.
+    let install_scripts_checked: Vec<String> = if keep_ecosystem(Ecosystem::Npm) {
+        disc.install_scripts_checked.clone()
+    } else {
+        Vec::new()
+    };
+    let install_scripts_unknown: Vec<(String, String)> = disc
+        .install_scripts_unknown
+        .iter()
+        .filter(|g| {
+            g.ecosystem.is_none_or(|e| {
+                opts.ecosystems
+                    .as_ref()
+                    .is_none_or(|list| list.contains(&e))
+            })
+        })
+        .map(|g| (g.file.clone(), g.reason.clone()))
+        .collect();
     let packages: Vec<Package> = disc
         .packages
         .into_iter()
@@ -488,6 +527,9 @@ pub fn scan(store: &Store, root: &Path, opts: &ScanOptions) -> Result<ScanReport
         notes,
         informational_omitted: informational,
         findings: merged,
+        install_scripts,
+        install_scripts_checked,
+        install_scripts_unknown,
         packages,
         all_packages,
     })
@@ -786,6 +828,123 @@ mod tests {
             mk("GHSA-x", &["MAL-1"], false, Severity::Low),
         ]);
         assert!(merged[0].malicious);
+    }
+
+    fn install_project(dir: &Path) -> std::path::PathBuf {
+        let proj = dir.join("ip");
+        fs::create_dir_all(proj.join("svc")).expect("mkdir");
+        fs::write(
+            proj.join("package-lock.json"),
+            r#"{"lockfileVersion":3,"packages":{
+              "node_modules/native":{"version":"1.2.3","hasInstallScript":true},
+              "node_modules/dev-native":{"version":"2.0.0","dev":true,"hasInstallScript":true},
+              "node_modules/quiet":{"version":"3.0.0"}}}"#,
+        )
+        .expect("w");
+        fs::write(
+            proj.join("svc/Cargo.lock"),
+            "[[package]]\nname = \"a\"\nversion = \"1.0.0\"\nsource = \"registry+x\"\n",
+        )
+        .expect("w");
+        proj
+    }
+
+    #[test]
+    fn install_scripts_are_reported_and_unknown_lockfiles_are_named() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let store = Store::at(dir.path().join("empty"));
+        let proj = install_project(dir.path());
+        let opts = ScanOptions {
+            offline: true,
+            ..ScanOptions::default()
+        };
+        let r = scan(&store, &proj, &opts).expect("scan");
+        let names: Vec<&str> = r.install_scripts.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["dev-native", "native"]);
+        assert_eq!(r.install_scripts_unknown.len(), 1);
+        assert_eq!(r.install_scripts_unknown[0].0, "svc/Cargo.lock");
+        assert!(r.install_scripts_unknown[0].1.contains("build scripts"));
+        assert!(
+            r.findings.is_empty(),
+            "an install script is not a vulnerability"
+        );
+    }
+
+    #[test]
+    fn the_scan_options_narrow_the_install_script_lists_too() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let store = Store::at(dir.path().join("empty"));
+        let proj = install_project(dir.path());
+        let no_dev = ScanOptions {
+            offline: true,
+            include_dev: false,
+            ..ScanOptions::default()
+        };
+        let r = scan(&store, &proj, &no_dev).expect("scan");
+        let names: Vec<&str> = r.install_scripts.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["native"],
+            "development-only packages are left out"
+        );
+
+        let npm_only = ScanOptions {
+            offline: true,
+            ecosystems: Some(vec![Ecosystem::Npm]),
+            ..ScanOptions::default()
+        };
+        let r = scan(&store, &proj, &npm_only).expect("scan");
+        assert_eq!(r.install_scripts.len(), 2);
+        assert_eq!(r.install_scripts_checked, vec!["package-lock.json"]);
+        assert!(
+            r.install_scripts_unknown.is_empty(),
+            "the Rust lockfile is out of scope, so its gap is not reported"
+        );
+
+        let rust_only = ScanOptions {
+            offline: true,
+            ecosystems: Some(vec![Ecosystem::CratesIo]),
+            ..ScanOptions::default()
+        };
+        let r = scan(&store, &proj, &rust_only).expect("scan");
+        assert!(r.install_scripts.is_empty());
+        assert!(
+            r.install_scripts_checked.is_empty(),
+            "npm is out of scope, so nothing here could be told"
+        );
+        assert_eq!(r.install_scripts_unknown.len(), 1);
+    }
+
+    #[test]
+    fn a_lockfile_that_cannot_say_never_turns_into_none_even_when_others_are_filtered_out() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let store = Store::at(dir.path().join("empty"));
+        let proj = dir.path().join("v1");
+        fs::create_dir_all(proj.join("svc")).expect("mkdir");
+        fs::write(
+            proj.join("package-lock.json"),
+            r#"{"lockfileVersion":1,"dependencies":{"a":{"version":"1.0.0"}}}"#,
+        )
+        .expect("w");
+        fs::write(
+            proj.join("svc/Cargo.lock"),
+            "[[package]]\nname = \"a\"\nversion = \"1.0.0\"\nsource = \"registry+x\"\n",
+        )
+        .expect("w");
+        let opts = ScanOptions {
+            offline: true,
+            ecosystems: Some(vec![Ecosystem::Npm]),
+            ..ScanOptions::default()
+        };
+        let r = scan(&store, &proj, &opts).expect("scan");
+        assert!(r.install_scripts_checked.is_empty());
+        assert_eq!(r.install_scripts_unknown.len(), 1);
+        let text = crate::report::text(&r);
+        assert!(!text.contains("Install-time code:"), "{text}");
+        assert!(
+            text.contains("not determined for package-lock.json"),
+            "{text}"
+        );
     }
 
     #[test]

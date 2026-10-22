@@ -13,6 +13,7 @@ CLI to get current facts instead of guessing.
 1. `scan_dependencies` on the project root (add `min_severity: "medium"` on big projects).
    - Read `notes` first: it lists ecosystems that were **not** scanned and missing enrichment data. If findings are unscored, call again with `enrich_nvd: true`.
    - Findings are ranked: `malicious`, then `known_exploited`, then code that uses the package, then high `epss`, then `cvss`. Work top-down.
+   - `install_scripts` lists packages that run code when installed (a review list, not vulnerabilities). A name in `install_scripts_unknown` means that lockfile cannot say: never report "no install scripts" for it. To stop them running, suggest `npm ci --ignore-scripts` and let the user decide.
    - A finding with `malicious: true` is a package that contains hostile code, not a vulnerability to patch. Do not upgrade it: tell the user, then remove it, and say its install scripts may already have run (rotate secrets that machine or CI could reach). `plan_fix` says the same.
 2. `explain_advisory` for anything you will act on or report: what the weakness is (CWE), whether it is
    exploited in the wild, links.

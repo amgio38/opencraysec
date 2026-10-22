@@ -7,6 +7,14 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ### Added
 
+- Install-time code. `scan` lists the packages whose lockfile entry says an install step runs code (npm
+  `hasInstallScript`, lockfileVersion 2 and 3) apart from the vulnerabilities: in the text report, as
+  `install_scripts` in JSON and MCP, in SARIF run properties, as a property on each CycloneDX component,
+  and in the dashboard and the HTML export (a number and a table). It is not a vulnerability and never
+  changes `--fail-on`; a malicious package that also runs an install script says so.
+- A lockfile that cannot say (npm lockfileVersion 1, yarn, pnpm, Cargo, Composer, Go, the Python
+  lockfiles, an SBOM) is named as such in every format, and "none" is only claimed for lockfiles that do
+  record it.
 - Malicious packages. An OSV `MAL-` report (OpenSSF Malicious Packages) is now a finding of its own kind:
   `malicious: true`, severity `critical`, listed before every other finding, and marked `MALICIOUS` in the
   text report, SARIF (rule properties and tags) and CycloneDX (rating method `other`, a property and a
