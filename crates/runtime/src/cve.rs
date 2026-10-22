@@ -13,6 +13,21 @@ use serde_json::Value;
 
 use crate::evaluate::compare;
 
+/// `value` rounded to `places` decimals, as a double. A score stored as `f32` would otherwise print
+/// as `9.800000190734863` in JSON.
+fn round_to(value: f32, places: i32) -> f64 {
+    let scale = 10f64.powi(places);
+    (f64::from(value) * scale).round() / scale
+}
+
+fn cvss_out<S: serde::Serializer>(v: &Option<f32>, s: S) -> Result<S::Ok, S::Error> {
+    v.map(|x| round_to(x, 1)).serialize(s)
+}
+
+fn epss_out<S: serde::Serializer>(v: &Option<f32>, s: S) -> Result<S::Ok, S::Error> {
+    v.map(|x| round_to(x, 4)).serialize(s)
+}
+
 /// One CVE that applies to a product at a version.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeCve {
@@ -23,6 +38,7 @@ pub struct RuntimeCve {
     /// First sentence or so of NVD's English description.
     pub summary: String,
     /// CVSS base score (v3.1, else v4.0, else v3.0).
+    #[serde(serialize_with = "cvss_out")]
     pub cvss: Option<f32>,
     /// CWE ids (`CWE-416`); NVD placeholders such as `NVD-CWE-Other` are dropped.
     pub cwes: Vec<String>,
@@ -31,6 +47,7 @@ pub struct RuntimeCve {
     /// Listed in CISA's Known Exploited Vulnerabilities catalogue.
     pub known_exploited: bool,
     /// EPSS probability of exploitation in the next 30 days.
+    #[serde(serialize_with = "epss_out")]
     pub epss: Option<f32>,
 }
 
@@ -385,6 +402,27 @@ mod tests {
             r.cves[1].affects[0].contains("not parsed"),
             "an unreadable range is kept and flagged, not lost: {:?}",
             r.cves[1].affects
+        );
+    }
+
+    #[test]
+    fn scores_print_without_float_noise() {
+        assert_eq!(round_to(9.8, 1), 9.8);
+        assert_eq!(round_to(0.123_456, 4), 0.1235);
+        let c = RuntimeCve {
+            id: "CVE-1".into(),
+            published: None,
+            summary: String::new(),
+            cvss: Some(9.8),
+            cwes: vec![],
+            affects: vec![],
+            known_exploited: false,
+            epss: Some(0.4),
+        };
+        let json = serde_json::to_string(&c).expect("serializes");
+        assert!(
+            json.contains("\"cvss\":9.8,") && json.contains("\"epss\":0.4}"),
+            "{json}"
         );
     }
 

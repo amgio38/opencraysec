@@ -60,10 +60,12 @@ pub fn scan_runtime(store: &Store, opts: &RuntimeOptions) -> Result<RuntimeRepor
                 .into(),
         );
     }
-    notes.push(
-        "This checks release lines, not CVEs: `eol` means upstream no longer fixes the line, `outdated` means a newer patch release exists. OS packages often backport fixes without changing the upstream version number, so confirm with your OS vendor's tracker; `current` says nothing about flaws published after the data was downloaded."
-            .into(),
-    );
+    notes.push(if opts.nvd {
+        "`eol` means upstream no longer fixes the release line and `outdated` means a newer patch release exists; the CVEs listed are NVD's. OS packages often backport fixes without changing the upstream version number, so confirm with your OS vendor's tracker; `current` says nothing about flaws published after the data was downloaded."
+    } else {
+        "These verdicts are about release lines, not CVEs: `eol` means upstream no longer fixes the line, `outdated` means a newer patch release exists. Add --nvd to list the CVEs NVD records for each version. OS packages often backport fixes without changing the upstream version number, so confirm with your OS vendor's tracker; `current` says nothing about flaws published after the data was downloaded."
+    }
+    .into());
 
     let mut results = evaluate(lifecycle.as_ref(), &vendor, &inputs, &today);
     if opts.nvd {
