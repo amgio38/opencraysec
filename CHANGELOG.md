@@ -5,6 +5,8 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ## [Unreleased]
 
+## [0.20261022.3] - 2026-10-22
+
 ### Added
 
 - `update` (and the MCP tool `update_db`) now print how many malicious-package reports each ecosystem
