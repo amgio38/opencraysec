@@ -184,6 +184,10 @@ pub struct Finding {
     pub cwes: Vec<String>,
     /// True when CISA lists the issue as exploited in the wild.
     pub known_exploited: bool,
+    /// True when the advisory reports malicious code in the package itself (an OSV `MAL-` id,
+    /// published by the OpenSSF Malicious Packages project), not a flaw in an honest one.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub malicious: bool,
     /// EPSS probability of exploitation in the next 30 days (0..1).
     pub epss: Option<f32>,
     /// Versions that fix the issue, lowest first.
@@ -196,6 +200,15 @@ pub struct Finding {
     /// Vulnerable symbols named by the advisories (used by reachability; not serialised).
     #[serde(skip)]
     pub symbol_refs: Vec<crate::osv::SymbolRef>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// True for the id prefix OSV uses for malicious-package reports.
+pub fn is_malicious_id(id: &str) -> bool {
+    id.starts_with("MAL-")
 }
 
 impl Finding {
@@ -312,6 +325,7 @@ mod tests {
             cvss: Some(7.0),
             cwes: vec![],
             known_exploited: false,
+            malicious: false,
             epss: None,
             fixed_in: vec![],
             references: vec![],
@@ -347,5 +361,32 @@ mod tests {
             "raw EPSS only breaks ties"
         );
         assert!(base.rank_key() < noisy.rank_key());
+    }
+    #[test]
+    fn malicious_ids_are_recognised_by_their_prefix_only() {
+        assert!(is_malicious_id("MAL-2021-1"));
+        assert!(!is_malicious_id("GHSA-xxxx-xxxx-xxxx"));
+        assert!(!is_malicious_id("CVE-2026-1"));
+        assert!(!is_malicious_id("XMAL-1"));
+        assert!(!is_malicious_id("mal-1"));
+    }
+
+    #[test]
+    fn the_malicious_flag_is_written_only_when_set_and_old_json_reads_back() {
+        let mut f: Finding = serde_json::from_str(
+            r#"{"id":"A","aliases":[],"package":{"ecosystem":"Npm","name":"x","version":"1","source":"l","dev":false},
+                "summary":"","severity":"low","cvss":null,"cwes":[],"known_exploited":false,
+                "epss":null,"fixed_in":[],"references":[]}"#,
+        )
+        .expect("a finding written before the flag existed");
+        assert!(!f.malicious);
+        assert!(
+            serde_json::to_value(&f)
+                .expect("json")
+                .get("malicious")
+                .is_none()
+        );
+        f.malicious = true;
+        assert_eq!(serde_json::to_value(&f).expect("json")["malicious"], true);
     }
 }

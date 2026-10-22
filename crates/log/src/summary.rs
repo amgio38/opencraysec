@@ -175,6 +175,7 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
                 "total": e.data.get("total").cloned().unwrap_or(json!(0)),
                 "by_severity": e.data.get("by_severity").cloned().unwrap_or(json!({})),
                 "exploited": e.data.get("exploited").cloned().unwrap_or(json!(0)),
+                "malicious": e.data.get("malicious").cloned().unwrap_or(json!(0)),
             })
         })
         .collect();
@@ -185,24 +186,32 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
 
     let mut sev_now: BTreeMap<&str, usize> = SEVERITIES.iter().map(|s| (*s, 0)).collect();
     let mut reach: BTreeMap<String, usize> = BTreeMap::new();
-    let mut packages: BTreeMap<String, (usize, u32, bool, String)> = BTreeMap::new();
+    let mut packages: BTreeMap<String, (usize, u32, bool, String, bool)> = BTreeMap::new();
     for f in &findings {
         let sev = str_of(f, "severity");
         if let Some(c) = sev_now.get_mut(sev) {
             *c += 1;
         }
-        let level = f
-            .get("reach")
-            .and_then(|r| r.get("level"))
-            .and_then(|l| l.as_str())
-            .unwrap_or("not_checked");
-        *reach.entry(level.to_string()).or_default() += 1;
+        let malicious = f
+            .get("malicious")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false);
+        // Usage is not assessed for a malicious package, so it stays out of the usage chart.
+        if !malicious {
+            let level = f
+                .get("reach")
+                .and_then(|r| r.get("level"))
+                .and_then(|l| l.as_str())
+                .unwrap_or("not_checked");
+            *reach.entry(level.to_string()).or_default() += 1;
+        }
         let key = format!("{}@{}", str_of(f, "package"), str_of(f, "version"));
         let slot = packages
             .entry(key)
-            .or_insert((0, 0, false, sev.to_string()));
+            .or_insert((0, 0, false, sev.to_string(), false));
         slot.0 += 1;
         slot.1 += weight(sev);
+        slot.4 |= malicious;
         slot.2 |= f
             .get("exploited")
             .and_then(|x| x.as_bool())
@@ -213,14 +222,14 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
     }
     let mut top: Vec<_> = packages.into_iter().collect();
     top.sort_by(|a, b| {
-        (b.1.2 as u32 * 100 + b.1.1)
-            .cmp(&(a.1.2 as u32 * 100 + a.1.1))
+        (u32::from(b.1.4) * 10_000 + u32::from(b.1.2) * 100 + b.1.1)
+            .cmp(&(u32::from(a.1.4) * 10_000 + u32::from(a.1.2) * 100 + a.1.1))
             .then(a.0.cmp(&b.0))
     });
     let top_packages: Vec<Value> = top
         .into_iter()
         .take(10)
-        .map(|(name, (count, score, kev, sev))| json!({ "package": name, "findings": count, "score": score, "exploited": kev, "severity": sev }))
+        .map(|(name, (count, score, kev, sev, malicious))| json!({ "package": name, "findings": count, "score": score, "exploited": kev, "malicious": malicious, "severity": sev }))
         .collect();
 
     // Fix history: verified resolutions and AI-recorded changes.
@@ -323,6 +332,14 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
                 .unwrap_or(false)
         })
         .count();
+    let malicious_open = findings
+        .iter()
+        .filter(|f| {
+            f.get("malicious")
+                .and_then(|x| x.as_bool())
+                .unwrap_or(false)
+        })
+        .count();
     let used_open = findings
         .iter()
         .filter(|f| {
@@ -342,6 +359,7 @@ pub fn summarize(events: &[Event], workspace: Option<&str>) -> Value {
             "open": findings.len(),
             "open_critical_high": open_high,
             "exploited_open": exploited_open,
+            "malicious_open": malicious_open,
             "used_in_code": used_open,
             "resolved_verified": resolved_ids.len(),
             "recorded_fixes": fixes.iter().filter(|f| str_of(f, "kind") == "recorded").count(),
@@ -547,6 +565,38 @@ mod tests {
         assert_eq!(
             s["activity"][0]["scans"], 1,
             "a runtime scan counts as activity"
+        );
+    }
+
+    #[test]
+    fn malicious_packages_lead_the_riskiest_list_and_stay_out_of_the_usage_chart() {
+        let mal = json!({"id": "MAL-1", "package": "evil-pkg", "version": "1.0.0", "ecosystem": "npm",
+            "severity": "critical", "exploited": false, "malicious": true, "summary": "s", "refs": []});
+        let events = vec![ev(
+            "2026-10-22T09:00:00Z",
+            "scan",
+            "/a",
+            json!({
+            "total": 3, "malicious": 1, "exploited": 1, "packages_checked": 9,
+            "by_severity": {"critical": 2, "high": 1, "medium": 0, "low": 0, "unknown": 0},
+            "findings": [
+                finding("G1", "lodash", "critical", true, "used_symbol"),
+                finding("G2", "minimist", "high", false, "imported"),
+                mal,
+            ]}),
+        )];
+        let s = summarize(&events, Some("/a"));
+        assert_eq!(s["top_packages"][0]["package"], "evil-pkg@1.0.0");
+        assert_eq!(s["top_packages"][0]["malicious"], true);
+        assert_eq!(s["top_packages"][1]["malicious"], false);
+        assert_eq!(s["kpis"]["malicious_open"], 1);
+        assert_eq!(s["timeline"][0]["malicious"], 1);
+        let reach = &s["reachability"];
+        assert_eq!(reach["used_symbol"], 1);
+        assert_eq!(reach["imported"], 1);
+        assert!(
+            reach.get("not_checked").is_none(),
+            "a malicious package is not counted as unchecked usage: {reach}"
         );
     }
 

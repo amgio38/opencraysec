@@ -6,4 +6,4 @@ pub mod model;
 pub mod osv;
 pub mod version;
 
-pub use model::{Ecosystem, Finding, Package, Reachability, Severity};
+pub use model::{Ecosystem, Finding, Package, Reachability, Severity, is_malicious_id};

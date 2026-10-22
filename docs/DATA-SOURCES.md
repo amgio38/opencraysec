@@ -9,6 +9,7 @@ or the NVD, by CISA, by FIRST, by MITRE, by endoflife.date or by php.net.
 | --- | --- | --- |
 | [OSV](https://osv.dev) | Which package versions are affected, fixed versions, severity vectors, CWE ids, affected functions | Per-ecosystem dumps (`osv-vulnerabilities.storage.googleapis.com/<ecosystem>/all.zip`) with `update`; the OSV API (`api.osv.dev`) when an ecosystem has no local data |
 | GitHub Advisory Database, RustSec, Go vulnerability database, PHP security advisories, PyPA | The advisories OSV aggregates | Through OSV (not queried separately) |
+| [OpenSSF Malicious Packages](https://github.com/ossf/malicious-packages) (Apache-2.0) | Packages reported to contain malicious code (ids `MAL-...`) | Through OSV: the same per-ecosystem dumps carry them, so `update` needs no extra download |
 | [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Whether a CVE is exploited in the wild (ranks first) | `update` |
 | [FIRST EPSS](https://www.first.org/epss/) | Probability of exploitation in the next 30 days (ranks next) | `update` |
 | [MITRE CWE](https://cwe.mitre.org) | Names and descriptions of weakness classes for `explain` | `update` |
@@ -54,14 +55,38 @@ without changing the upstream version number (an older `8.2.x` from your OS vend
 end-of-life line can still be patched by a vendor. NVD can lag a disclosure and its ranges can be wrong.
 The result says so in `notes` and never reports a clean bill of health.
 
+## Malicious packages
+
+A vulnerability is a flaw in code its author meant to be honest. A malicious package is hostile code
+published on purpose, often under a name close to a popular one. The OpenSSF Malicious Packages project
+collects reports of them and OSV republishes them with ids that start with `MAL-`. They arrive in the
+dumps `update` already downloads, so there is no separate feed and no setting to turn on.
+
+- A `MAL-` finding is marked `malicious`, rated `critical` (there is no CVSS score for it) and listed
+  before everything else, including exploited vulnerabilities.
+- Its usage evidence is not assessed. A package that your code never imports can still have run its
+  install step on the machine or in CI, so "not imported" would only mislead.
+- Upgrading is not the answer. `plan_fix` lists a package with no clean version under `unfixable` and
+  says to remove it, check whether its install scripts already ran, and rotate any secret that machine
+  could reach. When the report names only some releases of a package (a compromised release of an
+  honest package), the clean version is offered as usual, with the same warning.
+- Coverage differs a lot by registry. On 2026-10-21 the dumps held about 222,000 reports for npm,
+  12,000 for PyPI, and a few dozen or fewer for crates.io, Go and Packagist. A low count
+  reflects what has been reported, so do not read a quiet result as proof that a registry is free of
+  them. `update` counts the reports per
+  ecosystem; if a dataset holds none, the scan says so in `notes` instead of looking clean.
+- A report is evidence that someone filed it, not a verdict on your copy. Check the references on the
+  finding before you act, and tell the maintainers of the data if a report is wrong.
+
 ## How findings are ordered
 
-1. Exploited in the wild (CISA KEV).
-2. Code the project does not import sinks (only when usage evidence was checked); exploited ones always
-   stay on top.
-3. An EPSS of 10% or more.
-4. CVSS base score (computed from v3.0/v3.1 vectors; v4.0 scores come from NVD with `--enrich-nvd`).
-5. The raw EPSS value, as a tie-breaker.
+1. Malicious packages (OSV `MAL-` reports).
+2. Exploited in the wild (CISA KEV).
+3. Code the project does not import sinks (only when usage evidence was checked); malicious and
+   exploited ones always stay on top.
+4. An EPSS of 10% or more.
+5. CVSS base score (computed from v3.0/v3.1 vectors; v4.0 scores come from NVD with `--enrich-nvd`).
+6. The raw EPSS value, as a tie-breaker.
 
 Advisories for the same package that share an id or alias (GHSA, RUSTSEC, GO, CVE) are merged into
 one finding; when sources disagree about the fixed version the highest of the lowest fixes wins, so the

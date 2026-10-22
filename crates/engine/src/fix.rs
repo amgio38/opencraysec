@@ -47,6 +47,9 @@ pub struct Unfixable {
     pub version: String,
     /// Advisory id.
     pub finding: String,
+    /// True for a malicious package: it is removed, not upgraded.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub malicious: bool,
 }
 
 /// The plan for a set of findings.
@@ -170,6 +173,7 @@ pub fn plan_fix(findings: &[Finding], only: Option<&str>) -> FixPlan {
                     package: name.clone(),
                     version: version.clone(),
                     finding: f.id.clone(),
+                    malicious: f.malicious,
                 }),
             }
         }
@@ -190,14 +194,20 @@ pub fn plan_fix(findings: &[Finding], only: Option<&str>) -> FixPlan {
             note,
         });
     }
+    let mut caveats = vec![
+        "opencraysec does not modify your project; run the commands yourself or have the assistant run them after you approve.".into(),
+        "Run the project's tests after upgrading, then call verify_fix to prove the findings are gone.".into(),
+        "Steps marked needs_confirmation cross a major version (or a 0.x minor) and may break callers.".into(),
+    ];
+    if findings.iter().any(|f| f.malicious) {
+        caveats.push(
+            "A malicious package is not fixed by an upgrade. Remove it (or move to a version the advisory does not list), check whether its install scripts already ran on this machine or in CI, and rotate any secret those could reach.".into(),
+        );
+    }
     FixPlan {
         steps,
         unfixable,
-        caveats: vec![
-            "opencraysec does not modify your project; run the commands yourself or have the assistant run them after you approve.".into(),
-            "Run the project's tests after upgrading, then call verify_fix to prove the findings are gone.".into(),
-            "Steps marked needs_confirmation cross a major version (or a 0.x minor) and may break callers.".into(),
-        ],
+        caveats,
     }
 }
 
@@ -300,12 +310,48 @@ mod tests {
             cvss: None,
             cwes: vec![],
             known_exploited: false,
+            malicious: false,
             epss: None,
             fixed_in: fixed.iter().map(|s| s.to_string()).collect(),
             references: vec![],
             reachability: None,
             symbol_refs: vec![],
         }
+    }
+
+    #[test]
+    fn a_malicious_package_is_removed_not_upgraded() {
+        let mut bad = finding("MAL-2026-7", "evil-pkg", "1.0.0", &[]);
+        bad.malicious = true;
+        let plan = plan_fix(&[bad, finding("A", "lodash", "4.17.4", &["4.17.21"])], None);
+        assert_eq!(plan.steps.len(), 1, "only lodash gets an upgrade command");
+        assert_eq!(plan.unfixable.len(), 1);
+        assert!(plan.unfixable[0].malicious);
+        assert!(
+            plan.caveats
+                .iter()
+                .any(|c| c.contains("malicious package is not fixed by an upgrade"))
+        );
+        let json = serde_json::to_value(&plan).expect("json");
+        assert_eq!(json["unfixable"][0]["malicious"], true);
+    }
+
+    #[test]
+    fn a_compromised_release_with_a_clean_version_still_gets_the_warning() {
+        let mut bad = finding("MAL-2026-8", "popular-lib", "2.0.1", &["2.0.2"]);
+        bad.malicious = true;
+        let plan = plan_fix(&[bad], None);
+        assert_eq!(plan.steps.len(), 1);
+        assert_eq!(plan.steps[0].to, "2.0.2");
+        assert!(plan.caveats.iter().any(|c| c.contains("malicious")));
+    }
+
+    #[test]
+    fn an_ordinary_plan_carries_no_malicious_wording() {
+        let plan = plan_fix(&[finding("C", "left-pad", "1.0.0", &[])], None);
+        assert!(!plan.caveats.iter().any(|c| c.contains("malicious")));
+        let json = serde_json::to_value(&plan).expect("json");
+        assert!(json["unfixable"][0].get("malicious").is_none());
     }
 
     #[test]

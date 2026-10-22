@@ -21,7 +21,9 @@ your machine.
   the Go vulnerability database and more), the CISA *Known Exploited Vulnerabilities* list, FIRST EPSS
   scores, the MITRE CWE catalog and NVD scores. CVE ids, CWE weakness classes and CVSS come with the
   advisories. See [docs/DATA-SOURCES.md](docs/DATA-SOURCES.md).
-- **Ranked, not just listed**: exploited in the wild first, then likely to be exploited, then CVSS.
+- **Malicious packages**: reports from the [OpenSSF Malicious Packages](https://github.com/ossf/malicious-packages)
+  project (through OSV) are flagged and listed first, with "remove it" instead of an upgrade command.
+- **Ranked, not just listed**: malicious first, then exploited in the wild, then likely to be exploited, then CVSS.
 - **Is it actually used?** Usage evidence per finding from your own source: for Rust and Go down to the
   affected function. Findings your code does not import sink in the ranking (never hidden).
 - **Fix, verify, record**: `plan_fix` gives the exact upgrade commands, `verify_fix` re-scans and tells you

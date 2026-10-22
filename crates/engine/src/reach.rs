@@ -563,6 +563,11 @@ pub fn annotate(base: &Path, findings: &mut [Finding], notes: &mut Vec<String>) 
     let mut trees: HashMap<PathBuf, Tree> = HashMap::new();
     let mut truncated = false;
     for f in findings.iter_mut() {
+        // Usage is beside the point for a malicious package: its install step may have run
+        // whether or not the project's code imports it.
+        if f.malicious {
+            continue;
+        }
         if f.package
             .source
             .starts_with(opencraysec_lockfile::SBOM_SOURCE_PREFIX)
@@ -793,6 +798,7 @@ mod tests {
             cvss: None,
             cwes: vec![],
             known_exploited: false,
+            malicious: false,
             epss: None,
             fixed_in: vec![],
             references: vec![],

@@ -5,6 +5,22 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ## [Unreleased]
 
+### Added
+
+- Malicious packages. An OSV `MAL-` report (OpenSSF Malicious Packages) is now a finding of its own kind:
+  `malicious: true`, severity `critical`, listed before every other finding, and marked `MALICIOUS` in the
+  text report, SARIF (rule properties and tags) and CycloneDX (rating method `other`, a property and a
+  recommendation). The data was already in the downloaded dumps, where such a package used to appear
+  as an `unknown` finding that sank below the rest when your code did not import it.
+- Usage evidence is not assessed for a malicious package, so it can never be demoted. `plan_fix` lists
+  one that has no clean version as `unfixable` with `malicious: true` and a caveat to remove it, check
+  whether its install scripts already ran and rotate secrets; a compromised release of an honest package
+  still gets its upgrade command, with the same caveat.
+- `update` counts the `MAL-` reports per ecosystem (`malicious` in the dataset metadata, `malicious_records`
+  in `data_sources`). A dataset that holds none now says so in `notes` instead of looking clean.
+- The dashboard has a "Malicious packages" number and a `MALICIOUS` tag in the findings table; scan events
+  in the activity log carry `malicious`.
+
 ## [0.20261022.2] - 2026-10-22
 
 Completes `scan-runtime`, which 0.20261022.1 shipped without a place in the report: a runtime scan was not

@@ -25,8 +25,8 @@ There is no TLS: put it behind a reverse proxy if you expose it beyond a trusted
 
 ## What it shows
 
-- Nine numbers: open findings, critical and high, exploited in the wild, used by your code, confirmed
-  fixed, changes recorded, suspected code issues, runtime products to review, scans.
+- Ten numbers: open findings, critical and high, malicious packages, exploited in the wild, used by your
+  code, confirmed fixed, changes recorded, suspected code issues, runtime products to review, scans.
 - Charts: findings over time by severity, severity now, the riskiest packages, whether your code uses
   the vulnerable packages, and daily activity. Charts use Chart.js, loaded from a CDN at a pinned
   version and checked with an integrity hash; without network access the page shows tables instead.
@@ -36,13 +36,22 @@ There is no TLS: put it behind a reverse proxy if you expose it beyond a trusted
   measured by comparing dependency snapshots; "verified by re-scan" means a later `verify_fix`
   confirmed the advisory was gone.
 - The vulnerable dependencies (sortable, filterable, searchable), the **runtime products** and the
-  suspected code issues.
+  suspected code issues. Each dependency row names the file it came from: a lockfile, or `sbom:<file>`
+  for a CycloneDX or SPDX file given as the path (usage is then `Unknown`: there is no source tree).
+  Components of an SBOM that cannot be matched (operating-system packages, container images) appear in
+  the notes at the top, never silently dropped.
+- **Malicious packages** (OSV `MAL-` reports from OpenSSF Malicious Packages) have their own number, a
+  `MALICIOUS` tag, a dashed line in the over-time chart, first place in the riskiest packages, "Not
+  assessed" in the usage column (it is not checked for them) and "remove it" in the fix column. The line
+  under the page lists how many such reports each ecosystem's dataset holds.
 - **Runtime products (PHP, nginx, ...)**: one row per product and version from `scan-runtime`: whether its
   release line is end of life or behind its newest patch, the newest patch, and, when NVD was asked
   (`--nvd`), the CVEs NVD lists for that exact version with their CVSS, whether CISA lists them as
   exploited, and the affected range. Every runtime scan of the project counts: the newest verdict for
   each product and version is shown, and a CVE list from an earlier scan is kept when a later one did not
   ask NVD. "Runtime products to review" counts the rows that are end of life, outdated or have CVEs.
+- The footer names every data source: OSV, NVD, CISA KEV, EPSS, OpenSSF Malicious Packages, MITRE CWE,
+  and endoflife.date and php.net for the runtime products.
 - A project selector when the log covers several projects.
 
 ## What is in the log

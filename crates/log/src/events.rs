@@ -29,6 +29,7 @@ pub fn compact_finding(f: &Finding) -> Value {
         "cvss": f.cvss,
         "cwes": f.cwes,
         "exploited": f.known_exploited,
+        "malicious": f.malicious,
         "epss": f.epss,
         "fixed_in": f.fixed_in.iter().take(4).collect::<Vec<_>>(),
         "reach": f.reachability.as_ref().map(|r| json!({
@@ -76,6 +77,7 @@ pub fn scan_event(r: &ScanReport, client: Option<&str>) -> Event {
             "total": r.findings.len(),
             "by_severity": severity_counts(r.findings.iter().map(|f| &f.severity)),
             "exploited": r.findings.iter().filter(|f| f.known_exploited).count(),
+            "malicious": r.findings.iter().filter(|f| f.malicious).count(),
             "findings": findings,
         }),
     )
@@ -550,6 +552,57 @@ mod tests {
             "{notes}"
         );
         assert!(notes.contains("skipped big.lock: too large"), "{notes}");
+    }
+
+    #[test]
+    fn a_scan_event_and_the_dashboard_count_malicious_packages() {
+        use opencraysec_core::{Ecosystem, Finding, Package, Severity};
+        let mal = Finding {
+            id: "MAL-2026-7".into(),
+            aliases: vec![],
+            package: Package {
+                ecosystem: Ecosystem::Npm,
+                name: "evil-pkg".into(),
+                version: "1.0.0".into(),
+                source: "package-lock.json".into(),
+                dev: false,
+            },
+            summary: "Malicious code in evil-pkg (npm)".into(),
+            severity: Severity::Critical,
+            cvss: None,
+            cwes: vec![],
+            known_exploited: false,
+            malicious: true,
+            epss: None,
+            fixed_in: vec![],
+            references: vec![],
+            reachability: None,
+            symbol_refs: vec![],
+        };
+        let mut plain = mal.clone();
+        plain.id = "GHSA-1".into();
+        plain.malicious = false;
+        let report = ScanReport {
+            root: "/p".into(),
+            scanned_at: "t".into(),
+            lockfiles: vec!["package-lock.json".into()],
+            skipped: vec![],
+            unchecked: vec![],
+            packages_checked: 2,
+            data_sources: vec![],
+            notes: vec![],
+            informational_omitted: 0,
+            findings: vec![mal, plain],
+            packages: vec![],
+            all_packages: vec![],
+        };
+        let ev = scan_event(&report, None);
+        assert_eq!(ev.data["malicious"], 1);
+        assert_eq!(ev.data["findings"][0]["malicious"], true);
+        assert_eq!(ev.data["findings"][1]["malicious"], false);
+        let s = crate::summary::summarize(&[ev], Some("/p"));
+        assert_eq!(s["kpis"]["malicious_open"], 1);
+        assert_eq!(s["kpis"]["open"], 2);
     }
 
     #[test]

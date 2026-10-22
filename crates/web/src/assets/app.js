@@ -52,6 +52,7 @@
     clear(box);
     box.appendChild(kpi('Open findings', k.open, k.packages_checked + ' packages checked', k.open ? '' : 'good'));
     box.appendChild(kpi('Critical + high', k.open_critical_high, 'fix these first', k.open_critical_high ? 'bad' : 'good'));
+    box.appendChild(kpi('Malicious packages', k.malicious_open || 0, 'OpenSSF Malicious Packages', k.malicious_open ? 'bad' : 'good'));
     box.appendChild(kpi('Exploited in the wild', k.exploited_open, 'CISA KEV', k.exploited_open ? 'bad' : 'good'));
     box.appendChild(kpi('Used by your code', k.used_in_code, 'calls an affected function', k.used_in_code ? 'bad' : ''));
     box.appendChild(kpi('Confirmed fixed', k.resolved_verified, 'verified by a re-scan', 'good'));
@@ -113,7 +114,7 @@
         labels: tl.map(function (t) { return when(t.ts); }),
         datasets: SEV.map(function (x) {
           return { label: x, data: tl.map(function (t) { return (t.by_severity || {})[x] || 0; }), backgroundColor: color(x), stack: 's', borderRadius: 3 };
-        }).concat([{ type: 'line', label: 'exploited (KEV)', data: tl.map(function (t) { return t.exploited || 0; }), borderColor: color('critical'), backgroundColor: color('critical'), borderWidth: 2, pointRadius: 3, tension: 0.25, yAxisID: 'y' }])
+        }).concat([{ type: 'line', label: 'exploited (KEV)', data: tl.map(function (t) { return t.exploited || 0; }), borderColor: color('critical'), backgroundColor: color('critical'), borderWidth: 2, pointRadius: 3, tension: 0.25, yAxisID: 'y' }]).concat(tl.some(function (t) { return t.malicious; }) ? [{ type: 'line', label: 'malicious packages', data: tl.map(function (t) { return t.malicious || 0; }), borderColor: color('critical'), backgroundColor: color('critical'), borderWidth: 2, borderDash: [5, 4], pointStyle: 'rectRot', pointRadius: 4, tension: 0.25, yAxisID: 'y' }] : [])
       },
       options: chartOpts({ scales: axes(true) })
     }));
@@ -224,7 +225,7 @@
       return hay.indexOf(state.q.toLowerCase()) >= 0;
     });
     var key = {
-      severity: function (f) { return (f.exploited ? 10 : 0) + SEV_RANK[f.severity]; },
+      severity: function (f) { return (f.malicious ? 20 : 0) + (f.exploited ? 10 : 0) + SEV_RANK[f.severity]; },
       package: function (f) { return (f.package || '').toLowerCase(); },
       cvss: function (f) { return f.cvss || 0; },
       epss: function (f) { return f.epss || 0; },
@@ -265,13 +266,13 @@
     rows.forEach(function (f) {
       var reach = f.reach ? (REACH_LABEL[f.reach.level] || f.reach.level) : 'Not checked';
       var tr = h('tr', null,
-        h('td', null, sevBadge(f.severity), f.exploited ? h('div', null, h('span', { class: 'tag hot', text: 'EXPLOITED' })) : null),
+        h('td', null, sevBadge(f.severity), f.malicious ? h('div', null, h('span', { class: 'tag hot', text: 'MALICIOUS' })) : null, f.exploited ? h('div', null, h('span', { class: 'tag hot', text: 'EXPLOITED' })) : null),
         h('td', null, h('div', { class: 'mono', text: f.id }), h('div', { class: 'sub mono', text: (f.aliases || []).slice(0, 2).join(' ') })),
-        h('td', null, h('div', { text: f.package }), h('div', { class: 'sub mono', text: f.version + ' · ' + f.ecosystem + (f.dev ? ' · dev' : '') })),
+        h('td', null, h('div', { text: f.package }), h('div', { class: 'sub mono', text: f.version + ' · ' + f.ecosystem + (f.dev ? ' · dev' : '') }), f.source ? h('div', { class: 'sub mono', text: f.source }) : null),
         h('td', { text: f.cvss == null ? '-' : f.cvss.toFixed(1) }),
         h('td', { text: pct(f.epss) }),
-        h('td', null, h('div', { text: reach }), f.reach && f.reach.evidence && f.reach.evidence.length ? h('div', { class: 'sub mono', text: f.reach.evidence[0] }) : null),
-        h('td', { class: 'mono', text: (f.fixed_in || []).length ? f.fixed_in[0] : 'none' }),
+        h('td', null, h('div', { text: f.malicious ? 'Not assessed (malicious package)' : reach }), f.reach && f.reach.evidence && f.reach.evidence.length ? h('div', { class: 'sub mono', text: f.reach.evidence[0] }) : null),
+        h('td', { class: 'mono', text: (f.fixed_in || []).length ? f.fixed_in[0] : (f.malicious ? 'remove it' : 'none') }),
         h('td', null, h('div', { text: f.summary || '' }), (f.cwes || []).length ? h('div', { class: 'sub', text: (f.cwes || []).join(', ') }) : null, refLinks(f.refs)));
       tbody.appendChild(tr);
     });
@@ -353,7 +354,7 @@
     var src = $('sources');
     clear(src);
     var ds = s.data_sources || [];
-    if (ds.length) src.appendChild(h('div', { class: 'sub', text: 'Advisory data used: ' + ds.map(function (d) { return d.ecosystem + ' (' + d.mode + (d.updated_at ? ', updated ' + d.updated_at : '') + ')'; }).join(' · ') }));
+    if (ds.length) src.appendChild(h('div', { class: 'sub', text: 'Advisory data used: ' + ds.map(function (d) { return d.ecosystem + ' (' + d.mode + (d.updated_at ? ', updated ' + d.updated_at : '') + (d.malicious_records == null ? '' : ', ' + d.malicious_records + ' malicious-package reports') + ')'; }).join(' · ') }));
   }
 
   function render(s) {

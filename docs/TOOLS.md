@@ -24,10 +24,14 @@ listed in `notes` as not checked. Extra argument: `limit` (default 50) caps the 
 
 Result: `lockfiles`, `skipped`, `packages_checked`, `data_sources` (per ecosystem: `local`, `online` or
 `none`, and when the data was updated), `notes`, `informational_omitted`, `findings_total`,
-`findings_returned`, `by_severity`, and `findings`, most urgent first (exploited in the wild, then code
-that uses the package, then a meaningful EPSS, then CVSS). Each finding has `id`, `aliases`, `package`,
-`summary`, `severity`, `cvss`, `cwes`, `known_exploited`, `epss`, `fixed_in`, `references` and
-`reachability`. **Read `notes`**: it says what was not scanned.
+`findings_returned`, `by_severity`, and `findings`, most urgent first (malicious packages, then exploited
+in the wild, then code that uses the package, then a meaningful EPSS, then CVSS). Each finding has `id`,
+`aliases`, `package`, `summary`, `severity`, `cvss`, `cwes`, `known_exploited`, `epss`, `fixed_in`,
+`references` and `reachability`, and `malicious: true` when the advisory reports malicious code in the
+package itself (an OSV `MAL-` report, see [DATA-SOURCES.md](DATA-SOURCES.md#malicious-packages)); the field
+is absent otherwise. A malicious finding is `critical`, has no `reachability`, and is fixed by removing the
+package, not by upgrading. `data_sources` entries also carry `malicious_records`, the number of such
+reports in the local dataset, when it was counted. **Read `notes`**: it says what was not scanned.
 
 ## scan_code
 

@@ -27,9 +27,9 @@
   <div class="kpis" id="kpis"></div>
 
   <div class="grid">
-    <div class="card span-8"><h2>Open findings over time</h2><div class="desc">One bar per scan, stacked by severity. The line counts findings that are exploited in the wild (CISA KEV).</div><div class="chart-box tall"><canvas id="c-timeline"></canvas></div><div class="fallback" id="f-timeline"></div></div>
+    <div class="card span-8"><h2>Open findings over time</h2><div class="desc">One bar per scan, stacked by severity. The solid line counts findings that are exploited in the wild (CISA KEV); the dashed line counts malicious packages.</div><div class="chart-box tall"><canvas id="c-timeline"></canvas></div><div class="fallback" id="f-timeline"></div></div>
     <div class="card span-4"><h2>Severity now</h2><div class="desc">Findings in the latest scan.</div><div class="chart-box tall"><canvas id="c-severity"></canvas></div><div class="fallback" id="f-severity"></div></div>
-    <div class="card span-6"><h2>Riskiest packages</h2><div class="desc">Score = severity weights summed; exploited packages first.</div><div class="chart-box"><canvas id="c-packages"></canvas></div><div class="fallback" id="f-packages"></div></div>
+    <div class="card span-6"><h2>Riskiest packages</h2><div class="desc">Score = severity weights summed; malicious packages first, then exploited ones.</div><div class="chart-box"><canvas id="c-packages"></canvas></div><div class="fallback" id="f-packages"></div></div>
     <div class="card span-6"><h2>Does your code use it?</h2><div class="desc">Source-level evidence per finding. Not a call graph.</div><div class="chart-box"><canvas id="c-reach"></canvas></div><div class="fallback" id="f-reach"></div></div>
     <div class="card span-12"><h2>Activity</h2><div class="desc">Scans, fixes recorded by the AI, and vulnerabilities confirmed gone by a re-scan, per day.</div><div class="chart-box"><canvas id="c-activity"></canvas></div><div class="fallback" id="f-activity"></div></div>
   </div>
@@ -63,7 +63,7 @@
   <footer>
     <div id="sources"></div>
     <ul>
-      <li>Data: <a href="https://osv.dev" rel="noopener noreferrer" target="_blank">OSV</a>, <a href="https://nvd.nist.gov" rel="noopener noreferrer" target="_blank">NVD</a>, <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" rel="noopener noreferrer" target="_blank">CISA KEV</a>, <a href="https://www.first.org/epss/" rel="noopener noreferrer" target="_blank">EPSS</a>, <a href="https://cwe.mitre.org" rel="noopener noreferrer" target="_blank">MITRE CWE</a>.</li>
+      <li>Data: <a href="https://osv.dev" rel="noopener noreferrer" target="_blank">OSV</a>, <a href="https://nvd.nist.gov" rel="noopener noreferrer" target="_blank">NVD</a>, <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" rel="noopener noreferrer" target="_blank">CISA KEV</a>, <a href="https://www.first.org/epss/" rel="noopener noreferrer" target="_blank">EPSS</a>, <a href="https://github.com/ossf/malicious-packages" rel="noopener noreferrer" target="_blank">OpenSSF Malicious Packages</a> (through OSV), <a href="https://cwe.mitre.org" rel="noopener noreferrer" target="_blank">MITRE CWE</a>; for runtime products <a href="https://endoflife.date" rel="noopener noreferrer" target="_blank">endoflife.date</a> and <a href="https://www.php.net/releases/" rel="noopener noreferrer" target="_blank">php.net</a>.</li>
       <li>A clean result means no known advisory matched the lockfile versions; it does not prove the code is secure.</li>
       <li>This report is read-only and kept on this machine. It lists package names and advisory ids; share it with care.</li>
     </ul>

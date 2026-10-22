@@ -64,6 +64,10 @@ pub struct EcoMeta {
     /// Dataset layout version: 2 adds the symbol data that reachability needs.
     #[serde(default = "schema_v1")]
     pub schema: u32,
+    /// How many of `records` are malicious-package reports (`MAL-` ids). Absent in a dataset
+    /// downloaded before this was counted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub malicious: Option<usize>,
 }
 
 fn schema_v1() -> u32 {
@@ -577,5 +581,24 @@ mod tests {
         );
         assert!(default_dir().is_ok() || std::env::var_os("HOME").is_none());
         assert!(Ecosystem::ALL.iter().all(|e| store.meta(*e).is_none()));
+    }
+    #[test]
+    fn the_malicious_count_is_optional_in_stored_metadata() {
+        let old: EcoMeta =
+            serde_json::from_str(r#"{"updated_at":"t","records":3}"#).expect("old meta");
+        assert_eq!(old.malicious, None);
+        assert!(
+            !serde_json::to_string(&old)
+                .expect("json")
+                .contains("malicious")
+        );
+        let counted: EcoMeta =
+            serde_json::from_str(r#"{"updated_at":"t","records":3,"malicious":0}"#).expect("meta");
+        assert_eq!(counted.malicious, Some(0));
+        assert!(
+            serde_json::to_string(&counted)
+                .expect("json")
+                .contains("\"malicious\":0")
+        );
     }
 }

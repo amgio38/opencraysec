@@ -8,6 +8,9 @@ use serde_json::{Value, json};
 use crate::code::CodeReport;
 use crate::scan::ScanReport;
 
+/// What to do about a malicious package that has no clean version: upgrading is not the fix.
+pub const REMOVE_ADVICE: &str = "remove it; check whether its install scripts already ran and rotate secrets that machine could reach";
+
 /// Percent-encodes the characters that are not allowed in a purl name segment.
 fn enc(s: &str) -> String {
     let mut out = String::new();
@@ -71,6 +74,10 @@ pub fn sarif(r: &ScanReport) -> Value {
             props.insert("cwe".into(), json!(f.cwes));
             props.insert("aliases".into(), json!(f.aliases));
             props.insert("knownExploited".into(), json!(f.known_exploited));
+            if f.malicious {
+                props.insert("malicious".into(), json!(true));
+                props.insert("tags".into(), json!(["security", "malicious-package"]));
+            }
             if let Some(c) = f.cvss {
                 props.insert("cvss".into(), json!(c));
                 props.insert("security-severity".into(), json!(format!("{c:.1}")));
@@ -93,15 +100,22 @@ pub fn sarif(r: &ScanReport) -> Value {
         .findings
         .iter()
         .map(|f| {
-            let fix = if f.fixed_in.is_empty() {
+            let fix = if f.fixed_in.is_empty() && f.malicious {
+                REMOVE_ADVICE.to_string()
+            } else if f.fixed_in.is_empty() {
                 "no fixed version published".to_string()
             } else {
                 format!("fixed in {}", f.fixed_in.join(", "))
             };
+            let what = if f.malicious {
+                "is reported malicious"
+            } else {
+                "is affected"
+            };
             json!({
                 "ruleId": f.id,
                 "level": sarif_level(f.severity),
-                "message": { "text": format!("{} {} is affected: {} ({fix})", f.package.name, f.package.version, f.summary) },
+                "message": { "text": format!("{} {} {what}: {} ({fix})", f.package.name, f.package.version, f.summary) },
                 "locations": [{ "physicalLocation": { "artifactLocation": { "uri": f.package.source } } }],
                 "properties": { "purl": purl(&f.package), "severity": f.severity.as_str() },
             })
@@ -189,7 +203,9 @@ pub fn cyclonedx(r: &ScanReport) -> Value {
         .findings
         .iter()
         .map(|f| {
-            let mut rating = json!({ "severity": f.severity.as_str(), "method": "CVSSv31" });
+            // A malicious package has no CVSS vector, so its rating says "other", not CVSS.
+            let method = if f.malicious { "other" } else { "CVSSv31" };
+            let mut rating = json!({ "severity": f.severity.as_str(), "method": method });
             if let Some(c) = f.cvss {
                 rating["score"] = json!(c);
             }
@@ -203,6 +219,11 @@ pub fn cyclonedx(r: &ScanReport) -> Value {
             });
             if let Some(fixed) = f.fixed_in.first() {
                 v["recommendation"] = json!(format!("Upgrade to {fixed}"));
+            } else if f.malicious {
+                v["recommendation"] = json!(REMOVE_ADVICE);
+            }
+            if f.malicious {
+                v["properties"] = json!([{ "name": "opencraysec:malicious", "value": "true" }]);
             }
             v
         })
@@ -243,6 +264,7 @@ pub fn text(r: &ScanReport) -> String {
     }
     for f in &r.findings {
         let flags = [
+            f.malicious.then_some("MALICIOUS"),
             f.known_exploited.then_some("EXPLOITED"),
             f.epss.filter(|e| *e >= 0.1).map(|_| "likely-exploited"),
         ];
@@ -284,7 +306,9 @@ pub fn text(r: &ScanReport) -> String {
         let _ = writeln!(
             s,
             "    fix: {}   ({})",
-            if f.fixed_in.is_empty() {
+            if f.fixed_in.is_empty() && f.malicious {
+                REMOVE_ADVICE.to_string()
+            } else if f.fixed_in.is_empty() {
                 "none published".to_string()
             } else {
                 f.fixed_in.join(" / ")
@@ -447,6 +471,7 @@ mod tests {
                 cvss: Some(7.5),
                 cwes: vec!["CWE-79".into()],
                 known_exploited: true,
+                malicious: false,
                 epss: Some(0.5),
                 fixed_in: vec!["4.17.21".into()],
                 references: vec!["https://x".into()],
@@ -456,6 +481,66 @@ mod tests {
             packages: vec![p],
             all_packages: vec![],
         }
+    }
+
+    fn malicious_sample() -> ScanReport {
+        let mut r = sample();
+        let f = &mut r.findings[0];
+        f.id = "MAL-2026-7".into();
+        f.summary = "Malicious code in lodash (npm)".into();
+        f.malicious = true;
+        f.severity = Severity::Critical;
+        f.cvss = None;
+        f.epss = None;
+        f.known_exploited = false;
+        f.fixed_in = vec![];
+        r
+    }
+
+    #[test]
+    fn a_malicious_package_reads_as_one_in_every_format() {
+        let r = malicious_sample();
+        let t = text(&r);
+        assert!(
+            t.contains("[CRITICAL] MAL-2026-7 lodash@4.17.4  <MALICIOUS>"),
+            "{t}"
+        );
+        assert!(t.contains(&format!("fix: {REMOVE_ADVICE}")), "{t}");
+        assert!(!t.contains("none published"), "{t}");
+
+        let s = sarif(&r);
+        let rule = &s["runs"][0]["tool"]["driver"]["rules"][0];
+        assert_eq!(rule["properties"]["malicious"], true);
+        assert_eq!(rule["properties"]["tags"][1], "malicious-package");
+        let msg = s["runs"][0]["results"][0]["message"]["text"]
+            .as_str()
+            .expect("text");
+        assert!(msg.contains("is reported malicious"), "{msg}");
+        assert!(msg.contains(REMOVE_ADVICE), "{msg}");
+
+        let c = cyclonedx(&r);
+        let v = &c["vulnerabilities"][0];
+        assert_eq!(v["ratings"][0]["method"], "other");
+        assert_eq!(v["recommendation"], REMOVE_ADVICE);
+        assert_eq!(v["properties"][0]["name"], "opencraysec:malicious");
+    }
+
+    #[test]
+    fn an_ordinary_finding_carries_no_malicious_marks() {
+        let r = sample();
+        assert!(!text(&r).contains("MALICIOUS"));
+        let s = sarif(&r);
+        let props = &s["runs"][0]["tool"]["driver"]["rules"][0]["properties"];
+        assert!(props.get("malicious").is_none() && props.get("tags").is_none());
+        assert!(
+            s["runs"][0]["results"][0]["message"]["text"]
+                .as_str()
+                .expect("text")
+                .contains("is affected")
+        );
+        let c = cyclonedx(&r);
+        assert_eq!(c["vulnerabilities"][0]["ratings"][0]["method"], "CVSSv31");
+        assert!(c["vulnerabilities"][0].get("properties").is_none());
     }
 
     #[test]
@@ -516,12 +601,14 @@ mod tests {
                 mode: "local".into(),
                 updated_at: Some("2026-10-01T00:00:00Z".into()),
                 packages: 3,
+                malicious_records: None,
             },
             crate::scan::DataSource {
                 ecosystem: "PyPI".into(),
                 mode: "none".into(),
                 updated_at: None,
                 packages: 4,
+                malicious_records: None,
             },
         ];
         let s = sarif(&r);

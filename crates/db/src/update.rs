@@ -5,8 +5,8 @@ use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 
 use flate2::read::GzDecoder;
-use opencraysec_core::Ecosystem;
 use opencraysec_core::osv::{OsvRecord, trim_ecosystem_specific};
+use opencraysec_core::{Ecosystem, is_malicious_id};
 
 use crate::{DbError, EcoMeta, Store, encode_line, net, now_rfc3339};
 
@@ -15,12 +15,22 @@ pub use crate::cwe::update_cwe;
 /// Advisory descriptions are cut to this many characters when stored.
 const MAX_DETAILS: usize = 4000;
 
-/// Converts an OSV zip into the store's JSONL format. Returns the number of records written.
-pub fn ingest_zip(eco: Ecosystem, zip_path: &Path, out_path: &Path) -> Result<usize, DbError> {
+/// What [`ingest_zip`] wrote.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ingested {
+    /// Records written.
+    pub records: usize,
+    /// How many of them are malicious-package reports (`MAL-` ids).
+    pub malicious: usize,
+}
+
+/// Converts an OSV zip into the store's JSONL format.
+pub fn ingest_zip(eco: Ecosystem, zip_path: &Path, out_path: &Path) -> Result<Ingested, DbError> {
     let file = fs::File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| DbError(format!("bad zip: {e}")))?;
     let mut out = BufWriter::new(fs::File::create(out_path)?);
     let mut count = 0;
+    let mut malicious = 0;
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)
@@ -48,10 +58,14 @@ pub fn ingest_zip(eco: Ecosystem, zip_path: &Path, out_path: &Path) -> Result<us
             out.write_all(line.as_bytes())?;
             out.write_all(b"\n")?;
             count += 1;
+            malicious += usize::from(is_malicious_id(&rec.id));
         }
     }
     out.flush()?;
-    Ok(count)
+    Ok(Ingested {
+        records: count,
+        malicious,
+    })
 }
 
 /// Downloads and installs the advisories for one ecosystem.
@@ -68,7 +82,7 @@ pub fn update_osv(store: &Store, eco: Ecosystem) -> Result<EcoMeta, DbError> {
     let tmp = store.jsonl_path(eco).with_extension("jsonl.tmp");
     let result = ingest_zip(eco, &zip_path, &tmp);
     let _ = fs::remove_file(&zip_path);
-    let records = match result {
+    let ingested = match result {
         Ok(n) => n,
         Err(e) => {
             let _ = fs::remove_file(&tmp);
@@ -78,8 +92,9 @@ pub fn update_osv(store: &Store, eco: Ecosystem) -> Result<EcoMeta, DbError> {
     fs::rename(&tmp, store.jsonl_path(eco))?;
     let meta = EcoMeta {
         updated_at: now_rfc3339(),
-        records,
+        records: ingested.records,
         schema: crate::SCHEMA,
+        malicious: Some(ingested.malicious),
     };
     store.write_atomic(
         &store.meta_path(eco),
@@ -183,6 +198,14 @@ mod tests {
                     "C.json",
                     r#"{"id":"C","affected":[{"package":{"ecosystem":"npm","name":"m"}}]}"#,
                 ),
+                (
+                    "MAL-2026-1.json",
+                    r#"{"id":"MAL-2026-1","affected":[{"package":{"ecosystem":"Go","name":"evil"},"ranges":[{"type":"SEMVER","events":[{"introduced":"0"}]}]}]}"#,
+                ),
+                (
+                    "MAL-2026-2.json",
+                    r#"{"id":"MAL-2026-2","withdrawn":"2026-01-01T00:00:00Z","affected":[{"package":{"ecosystem":"Go","name":"evil"}}]}"#,
+                ),
                 ("readme.txt", "x"),
             ] {
                 z.start_file(name, opts).expect("start");
@@ -191,7 +214,14 @@ mod tests {
             z.finish().expect("finish");
         }
         let out = dir.path().join("o.jsonl");
-        assert_eq!(ingest_zip(Ecosystem::Go, &zp, &out).expect("ingest"), 1);
+        // A and the live MAL- report are kept; the withdrawn ones and the npm one are not.
+        assert_eq!(
+            ingest_zip(Ecosystem::Go, &zp, &out).expect("ingest"),
+            Ingested {
+                records: 2,
+                malicious: 1
+            }
+        );
         assert!(
             fs::read_to_string(&out)
                 .expect("read")

@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
 use opencraysec_core::osv::OsvRecord;
-use opencraysec_core::{Ecosystem, Finding, Package, Severity};
+use opencraysec_core::{Ecosystem, Finding, Package, Severity, is_malicious_id};
 use opencraysec_db::{Store, online};
 use serde::Serialize;
 
@@ -51,6 +51,9 @@ pub struct DataSource {
     pub updated_at: Option<String>,
     /// Packages checked against this source.
     pub packages: usize,
+    /// Malicious-package (`MAL-`) reports in the local dump, when it was counted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub malicious_records: Option<usize>,
 }
 
 /// Everything a scan found and everything it did not check.
@@ -132,15 +135,22 @@ fn summary_of(rec: &OsvRecord) -> String {
 
 fn build_finding(rec: &OsvRecord, pkg: &Package, fixed_in: Vec<String>) -> Finding {
     let eco = pkg.ecosystem;
+    let malicious = is_malicious_id(&rec.id);
     Finding {
         id: rec.id.clone(),
         aliases: rec.aliases.clone(),
         package: pkg.clone(),
         summary: summary_of(rec),
-        severity: rec.severity_bucket(),
+        // A malicious package has no CVSS score, but it is the worst case: the code is hostile.
+        severity: if malicious {
+            Severity::Critical
+        } else {
+            rec.severity_bucket()
+        },
         cvss: rec.cvss_score(),
         cwes: rec.cwes(),
         known_exploited: false,
+        malicious,
         epss: None,
         fixed_in,
         references: rec
@@ -191,6 +201,10 @@ fn absorb(into: &mut Finding, other: Finding) {
     } else {
         (into.clone(), other)
     };
+    if drop.malicious {
+        keep.malicious = true;
+        keep.severity = Severity::Critical;
+    }
     let mut aliases: BTreeSet<String> = keep.aliases.iter().cloned().collect();
     aliases.extend(drop.aliases);
     aliases.insert(drop.id);
@@ -340,6 +354,7 @@ pub fn scan(store: &Store, root: &Path, opts: &ScanOptions) -> Result<ScanReport
             mode: "none".into(),
             updated_at: None,
             packages: pkgs.len(),
+            malicious_records: None,
         };
         if store.has(eco) {
             let wanted: HashSet<String> =
@@ -359,7 +374,17 @@ pub fn scan(store: &Store, root: &Path, opts: &ScanOptions) -> Result<ScanReport
                 }
             }
             src.mode = "local".into();
-            src.updated_at = store.meta(eco).map(|m| m.updated_at);
+            let meta = store.meta(eco);
+            src.malicious_records = meta.as_ref().and_then(|m| m.malicious);
+            src.updated_at = meta.map(|m| m.updated_at);
+            if src.malicious_records == Some(0) {
+                notes.push(format!(
+                    "{}: the local dataset holds no malicious-package (MAL-) reports, so a malicious \
+                     package would not be reported here. Run `opencraysec update {}`.",
+                    eco.osv_name(),
+                    eco.osv_name()
+                ));
+            }
         } else if !opts.offline {
             let owned: Vec<Package> = pkgs.iter().map(|p| (*p).clone()).collect();
             let hits = online::query(store, &owned)?;
@@ -438,8 +463,10 @@ pub fn scan(store: &Store, root: &Path, opts: &ScanOptions) -> Result<ScanReport
             .is_some_and(|r| r.level == "not_found")
     };
     merged.sort_by(|a, b| {
-        // Exploited in the wild always leads; otherwise code the project does not import sinks.
-        let lead = |f: &Finding| (f.known_exploited, !not_found(f));
+        // Malicious packages lead, then exploited in the wild; otherwise code the project does
+        // not import sinks. A malicious package is never demoted: its install step may already
+        // have run, whether or not the code imports it.
+        let lead = |f: &Finding| (f.malicious, f.known_exploited, !not_found(f));
         lead(b)
             .cmp(&lead(a))
             .then_with(|| b.rank_key().cmp(&a.rank_key()))
@@ -574,6 +601,7 @@ mod tests {
             cvss: None,
             cwes: vec![],
             known_exploited: false,
+            malicious: false,
             epss: None,
             fixed_in: fixed.iter().map(|s| s.to_string()).collect(),
             references: vec![],
@@ -586,6 +614,178 @@ mod tests {
         ]);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].fixed_in, vec!["0.2.23"]);
+    }
+
+    fn mal_store(dir: &Path, meta: &str) -> Store {
+        let store = Store::at(dir.join("data"));
+        let recs = [
+            r#"{"id":"GHSA-aaaa","aliases":["CVE-2026-100"],"summary":"bad lodash",
+              "affected":[{"package":{"ecosystem":"npm","name":"lodash"},
+                "ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"4.17.21"}]}]}],
+              "severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]}"#,
+            r#"{"id":"MAL-2026-7","summary":"Malicious code in evil-pkg (npm)",
+              "affected":[{"package":{"ecosystem":"npm","name":"evil-pkg"},
+                "ranges":[{"type":"SEMVER","events":[{"introduced":"0"}]}]}]}"#,
+        ];
+        let lines: Vec<String> = recs
+            .iter()
+            .map(|r| serde_json::from_str::<OsvRecord>(r).expect("json"))
+            .filter_map(|r| opencraysec_db::encode_line(Ecosystem::Npm, &r).expect("enc"))
+            .collect();
+        fs::create_dir_all(dir.join("data/osv")).expect("mkdir");
+        fs::write(dir.join("data/osv/npm.jsonl"), lines.join("\n") + "\n").expect("w");
+        fs::write(dir.join("data/osv/npm.meta.json"), meta).expect("w");
+        fs::write(
+            dir.join("data/kev.json"),
+            r#"{"updated_at":"t","ids":["CVE-2026-100"]}"#,
+        )
+        .expect("w");
+        store
+    }
+
+    fn mal_project(dir: &Path) -> std::path::PathBuf {
+        let proj = dir.join("proj");
+        fs::create_dir_all(proj.join("src")).expect("mkdir");
+        fs::write(
+            proj.join("package-lock.json"),
+            r#"{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.4"},
+               "node_modules/evil-pkg":{"version":"1.0.0"}}}"#,
+        )
+        .expect("w");
+        // The code imports lodash only, so without special handling evil-pkg would be demoted.
+        fs::write(
+            proj.join("src/index.js"),
+            "const _ = require('lodash');\nmodule.exports = _;\n",
+        )
+        .expect("w");
+        proj
+    }
+
+    #[test]
+    fn a_malicious_package_is_critical_and_leads_even_past_an_exploited_one() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let store = mal_store(
+            dir.path(),
+            r#"{"updated_at":"2026-10-19T00:00:00Z","records":2,"malicious":1}"#,
+        );
+        let proj = mal_project(dir.path());
+        let opts = ScanOptions {
+            offline: true,
+            reachability: true,
+            ..ScanOptions::default()
+        };
+        let r = scan(&store, &proj, &opts).expect("scan");
+        assert_eq!(r.findings.len(), 2);
+        let first = &r.findings[0];
+        assert_eq!(first.id, "MAL-2026-7");
+        assert!(first.malicious);
+        assert_eq!(first.severity, Severity::Critical);
+        assert!(first.fixed_in.is_empty());
+        assert!(
+            first.reachability.is_none(),
+            "usage is not assessed for a malicious package, so it can never be demoted"
+        );
+        let second = &r.findings[1];
+        assert_eq!(second.package.name, "lodash");
+        assert!(second.known_exploited && !second.malicious);
+        assert_eq!(r.data_sources[0].malicious_records, Some(1));
+        assert!(!r.notes.iter().any(|n| n.contains("MAL-")));
+    }
+
+    #[test]
+    fn a_malicious_package_survives_the_severity_filter_like_any_critical() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let store = mal_store(
+            dir.path(),
+            r#"{"updated_at":"t","records":2,"malicious":1}"#,
+        );
+        let proj = mal_project(dir.path());
+        let opts = ScanOptions {
+            offline: true,
+            min_severity: Severity::Critical,
+            ..ScanOptions::default()
+        };
+        let ids: Vec<String> = scan(&store, &proj, &opts)
+            .expect("scan")
+            .findings
+            .into_iter()
+            .map(|f| f.id)
+            .collect();
+        assert!(ids.contains(&"MAL-2026-7".to_string()));
+    }
+
+    #[test]
+    fn a_dataset_without_malicious_reports_says_so_instead_of_looking_clean() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let store = mal_store(
+            dir.path(),
+            r#"{"updated_at":"t","records":2,"malicious":0}"#,
+        );
+        let proj = mal_project(dir.path());
+        let opts = ScanOptions {
+            offline: true,
+            ..ScanOptions::default()
+        };
+        let r = scan(&store, &proj, &opts).expect("scan");
+        assert_eq!(r.data_sources[0].malicious_records, Some(0));
+        assert!(
+            r.notes
+                .iter()
+                .any(|n| n.contains("npm") && n.contains("no malicious-package (MAL-) reports"))
+        );
+    }
+
+    #[test]
+    fn a_dataset_that_predates_the_count_adds_no_note() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let store = mal_store(dir.path(), r#"{"updated_at":"t","records":2}"#);
+        let proj = mal_project(dir.path());
+        let opts = ScanOptions {
+            offline: true,
+            ..ScanOptions::default()
+        };
+        let r = scan(&store, &proj, &opts).expect("scan");
+        assert_eq!(r.data_sources[0].malicious_records, None);
+        assert!(!r.notes.iter().any(|n| n.contains("MAL-")));
+    }
+
+    #[test]
+    fn merging_a_malicious_report_with_a_plain_advisory_keeps_it_malicious() {
+        let mk = |id: &str, aliases: &[&str], malicious: bool, severity: Severity| Finding {
+            id: id.into(),
+            aliases: aliases.iter().map(|s| s.to_string()).collect(),
+            package: Package {
+                ecosystem: Ecosystem::Npm,
+                name: "evil-pkg".into(),
+                version: "1.0.0".into(),
+                source: "package-lock.json".into(),
+                dev: false,
+            },
+            summary: String::new(),
+            severity,
+            cvss: Some(9.9),
+            cwes: vec![],
+            known_exploited: false,
+            malicious,
+            epss: None,
+            fixed_in: vec![],
+            references: vec![],
+            reachability: None,
+            symbol_refs: vec![],
+        };
+        // The plain advisory outranks the report on CVSS, so it is the one that is kept.
+        let merged = merge_same_issue(vec![
+            mk("GHSA-x", &["MAL-1"], false, Severity::Low),
+            mk("MAL-1", &["GHSA-x"], true, Severity::Critical),
+        ]);
+        assert_eq!(merged.len(), 1);
+        assert!(merged[0].malicious);
+        assert_eq!(merged[0].severity, Severity::Critical);
+        let merged = merge_same_issue(vec![
+            mk("MAL-1", &["GHSA-x"], true, Severity::Critical),
+            mk("GHSA-x", &["MAL-1"], false, Severity::Low),
+        ]);
+        assert!(merged[0].malicious);
     }
 
     #[test]
