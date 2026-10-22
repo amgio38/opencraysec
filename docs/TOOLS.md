@@ -140,7 +140,7 @@ distribution's older version number may already be patched.
 
 Downloads or refreshes advisory data. Arguments: `ecosystems` (default: those already downloaded) and
 `enrich` (default `true`: also CISA KEV, EPSS, the MITRE CWE catalog and the runtime release data). npm is several hundred MB.
-Disabled with `--offline`. Result: one entry per source with its record count or error.
+Disabled with `--offline`. Result: one entry per source with its record count (and, for an ecosystem, `malicious`, how many of those are malicious-package reports) or error.
 
 ## db_status
 

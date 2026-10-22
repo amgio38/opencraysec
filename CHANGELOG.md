@@ -7,6 +7,9 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ### Added
 
+- `update` (and the MCP tool `update_db`) now print how many malicious-package reports each ecosystem
+  holds. A scan against a dataset downloaded before they were counted says it cannot tell whether a
+  malicious package is among the results, instead of staying silent.
 - GitHub Actions. A workflow in `.github/workflows` is read for its `uses:` lines, and each action is
   checked against the OSV `GitHub Actions` data (the GitHub Advisory Database): `update actions`, or
   `update --for .` in a project with workflows, downloads it (about 100 KB). A full release tag is

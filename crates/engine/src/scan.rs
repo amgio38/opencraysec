@@ -438,13 +438,24 @@ pub(crate) fn scan_discovered(
             src.updated_at = meta.map(|m| m.updated_at);
             // Malicious-package reports are about packages in a registry; an action is not one,
             // so an empty count there says nothing.
-            if src.malicious_records == Some(0) && eco != Ecosystem::GitHubActions {
-                notes.push(format!(
-                    "{}: the local dataset holds no malicious-package (MAL-) reports, so a malicious \
-                     package would not be reported here. Run `opencraysec update {}`.",
-                    eco.osv_name(),
-                    eco.cli_name()
-                ));
+            if eco != Ecosystem::GitHubActions {
+                // `None` is a dataset downloaded before the count existed: it may well hold
+                // reports, but nothing here can tell, and silence would read as "none".
+                let why = match src.malicious_records {
+                    Some(0) => Some("holds no malicious-package (MAL-) reports"),
+                    None => {
+                        Some("was downloaded before malicious-package (MAL-) reports were counted")
+                    }
+                    Some(_) => None,
+                };
+                if let Some(why) = why {
+                    notes.push(format!(
+                        "{}: the local dataset {why}, so it cannot be said whether a malicious \
+                         package is among these. Run `opencraysec update {}`.",
+                        eco.osv_name(),
+                        eco.cli_name()
+                    ));
+                }
             }
         } else if !opts.offline {
             let owned: Vec<Package> = pkgs.iter().map(|p| (*p).clone()).collect();
@@ -796,12 +807,13 @@ mod tests {
         assert!(
             r.notes
                 .iter()
-                .any(|n| n.contains("npm") && n.contains("no malicious-package (MAL-) reports"))
+                .any(|n| n.contains("npm")
+                    && n.contains("holds no malicious-package (MAL-) reports"))
         );
     }
 
     #[test]
-    fn a_dataset_that_predates_the_count_adds_no_note() {
+    fn a_dataset_that_predates_the_count_says_it_cannot_tell() {
         let dir = tempfile::tempdir().expect("tmp");
         let store = mal_store(dir.path(), r#"{"updated_at":"t","records":2}"#);
         let proj = mal_project(dir.path());
@@ -811,7 +823,8 @@ mod tests {
         };
         let r = scan(&store, &proj, &opts).expect("scan");
         assert_eq!(r.data_sources[0].malicious_records, None);
-        assert!(!r.notes.iter().any(|n| n.contains("MAL-")));
+        assert!(r.notes.iter().any(|n| n.contains("npm")
+            && n.contains("downloaded before malicious-package (MAL-) reports were counted")));
     }
 
     #[test]

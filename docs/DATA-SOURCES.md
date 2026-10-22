@@ -77,7 +77,10 @@ dumps `update` already downloads, so there is no separate feed and no setting to
   12,000 for PyPI, and a few dozen or fewer for crates.io, Go and Packagist. A low count
   reflects what has been reported, so do not read a quiet result as proof that a registry is free of
   them. `update` counts the reports per
-  ecosystem; if a dataset holds none, the scan says so in `notes` instead of looking clean.
+  ecosystem and prints the count; if a dataset holds none, or was downloaded before they were counted,
+  the scan says so in `notes` instead of looking clean (run `update` again to get the count).
+- This does not apply to GitHub Actions: an action is not a registry package, so no report of malicious
+  code is expected there and an empty count says nothing.
 - A report is evidence that someone filed it, not a verdict on your copy. Check the references on the
   finding before you act, and tell the maintainers of the data if a report is wrong.
 

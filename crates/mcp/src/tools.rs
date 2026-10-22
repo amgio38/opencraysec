@@ -431,7 +431,7 @@ pub fn call(cfg: &ServerConfig, name: &str, args: &Value) -> Result<Value, ToolE
             let mut results = Vec::new();
             for eco in &ecos {
                 match update::update_osv(&cfg.store, *eco) {
-                    Ok(m) => results.push(json!({ "ecosystem": eco.osv_name(), "records": m.records, "updated_at": m.updated_at })),
+                    Ok(m) => results.push(json!({ "ecosystem": eco.osv_name(), "records": m.records, "malicious": m.malicious, "updated_at": m.updated_at })),
                     Err(e) => results.push(json!({ "ecosystem": eco.osv_name(), "error": e.to_string() })),
                 }
             }

@@ -555,9 +555,11 @@ fn execute(
                     .map_err(|e| format!("{}: {e}", eco.osv_name()))?;
                 writeln!(
                     out,
-                    "{}: {} advisories ({})",
+                    "{}: {} advisories, {} malicious-package ({})",
                     eco.osv_name(),
                     m.records,
+                    m.malicious
+                        .map_or_else(|| "?".to_string(), |n| n.to_string()),
                     m.updated_at
                 )
                 .ok();
