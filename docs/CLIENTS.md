@@ -1,8 +1,8 @@
 # Connecting an AI assistant
 
 `opencraysec mcp` speaks the Model Context Protocol over stdio. Any MCP client can launch it. It
-exposes read-only checks (`scan_dependencies`, `scan_code`, `explain_advisory`, `plan_fix`,
-`verify_fix`), `record_fix` (writes to the activity log only) and `update_db`. See
+exposes read-only checks (`scan_dependencies`, `scan_code`, `scan_runtime`, `explain_advisory`,
+`plan_fix`, `verify_fix`), `record_fix` (writes to the activity log only) and `update_db`. See
 [TOOLS.md](TOOLS.md) for every tool.
 
 The server **never edits your project**. It tells the assistant what to run; the assistant (with

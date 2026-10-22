@@ -59,6 +59,33 @@ again.
 path reported (and that is in the activity log) can be resolved. Run `scan` first, fix, then verify; make
 sure logging is on (`OPENCRAYSEC_LOG`, `--no-log`) and the path is the same one you scanned.
 
+## `scan-runtime` says `unknown` for everything
+
+Either no release data is stored (the notes say so: run `opencraysec update`, or `update_db` from an
+assistant), or the product is not in the endoflife.date feed, or the version is older than the feed goes
+back or newer than its last download. The advice on each result says which. Nothing is judged `current`
+without data.
+
+## `scan-runtime` says `outdated` but my operating system's package is patched
+
+Distributions backport fixes without changing the upstream version number, so `8.2.30` from your vendor may
+already contain the fix that `8.2.35` has upstream. The verdict compares upstream release numbers only.
+Check your vendor's security tracker, or use `--nvd` and read each CVE's affected range with that in mind.
+
+## `scan-runtime --nvd` is slow, or says "NVD lookup failed"
+
+NVD allows 5 requests per 30 seconds without a key, so each product takes about 6.5 seconds the first time
+(answers are cached for 12 hours, and at most 10 products are asked per scan). Set `NVD_API_KEY` to speed
+it up. A failure is reported per product and does not stop the others. `--nvd` needs the network and is
+refused by `opencraysec mcp --offline`.
+
+## An SBOM scan says components were "not checked"
+
+Only libraries of the five supported ecosystems (`pkg:cargo`, `pkg:npm`, `pkg:composer`, `pkg:golang`,
+`pkg:pypi`) are matched. Operating-system packages (`pkg:deb`, `pkg:apk`), container images and components
+with no package URL or no version are listed with their type and count, and are not matched. A result with no
+findings is then not a clean result.
+
 ## `scan --fail-on` exits 3
 
 A pass would mean nothing. Read the `data`, `skipped`, `unchecked` and `note` lines: usually the

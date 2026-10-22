@@ -207,8 +207,9 @@ machine. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md#network-use).
 | Crate | Role |
 | --- | --- |
 | `opencraysec-core` | Package model, per-ecosystem version ordering, CVSS v3, OSV matching. |
-| `opencraysec-lockfile` | Lockfile discovery and parsers. |
-| `opencraysec-db` | Local store, dataset updates, the OSV and NVD clients. |
+| `opencraysec-lockfile` | Lockfile and SBOM discovery and parsers. |
+| `opencraysec-runtime` | Runtime products (PHP, nginx, ...): version detection, release and end-of-life verdicts, NVD answers. No network. |
+| `opencraysec-db` | Local store, dataset updates, the OSV and NVD clients, the release-data feeds. |
 | `opencraysec-engine` | Scan, usage evidence, code rules, explain, plan and verify fix, SARIF and CycloneDX. |
 | `opencraysec-log` | The activity log (JSONL), dependency snapshots and report summaries. |
 | `opencraysec-web` | The read-only dashboard server and the HTML export. |

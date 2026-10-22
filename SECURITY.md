@@ -39,9 +39,15 @@ that launched it. It is not a sandbox against a hostile program running as your 
 - **Workspace boundary.** Every path a tool is asked about is resolved with `canonicalize` (which follows
   symlinks) and must land inside `--workspace`; otherwise the tool answers that it is outside the
   workspace. Lockfile and source discovery do not follow symlinks.
-- **No code execution.** Parsers read text. opencraysec does not run package managers, build scripts or
-  your code. External scanners (`gitleaks`, `semgrep`) run only when you ask for them, with fixed
-  arguments and the path confined to the workspace.
+- **No code execution of your project.** Parsers read text. opencraysec does not run package managers,
+  build scripts or your code. Two things start other programs, and only when asked: external scanners
+  (`gitleaks`, `semgrep`), with fixed arguments and the path confined to the workspace; and
+  `scan-runtime` without `product@version` arguments, which runs a fixed list of version commands
+  (`php --version`, `nginx -v`, `node --version`, and similar) found on `PATH`. That list is compiled into
+  the program: no program name or argument ever comes from downloaded data (the release feed's own
+  `versionCommand` text is ignored). Each command is spawned without a shell, with no stdin, a 5 second
+  limit and at most 16 KiB of its output read. They run as your user, and a program such as PHP loads its
+  own configuration and extensions as it starts. Pass `product@version` instead to run nothing.
 - **Bounded inputs.** Lockfiles (64 MiB), source files (1 MiB), MCP messages (4 MiB), downloads (2 GiB)
   and the number of files read all have limits.
 - **Secrets.** Secret-like findings never include the matched value, in any output or in the log.
@@ -49,12 +55,15 @@ that launched it. It is not a sandbox against a hostile program running as your 
 ## What leaves your machine
 
 Only what [docs/CONFIGURATION.md](docs/CONFIGURATION.md#network-use) lists: dataset downloads, package
-names and versions to `api.osv.dev` when an ecosystem has no local data (unless `--offline`), and CVE ids
-to NVD with `--enrich-nvd`. Never source code. `--offline` forbids all of it.
+names and versions to `api.osv.dev` when an ecosystem has no local data (unless `--offline`), CVE ids
+to NVD with `--enrich-nvd`, and a product's CPE name and version (`cpe:2.3:a:php:php` at `8.4.26`) to NVD
+with `scan-runtime --nvd`. Never source code. `--offline` forbids all of it.
 
 ## Downloads
 
-Datasets come over HTTPS from the publishers (OSV, CISA, FIRST, MITRE, NVD). Release archives are
+Datasets come over HTTPS from the publishers (OSV, CISA, FIRST, MITRE, NVD, endoflife.date, php.net).
+The CPE name and version that go into an NVD request are checked against a strict pattern first, because
+the name comes from downloaded data. Release archives are
 installed only after their SHA-256 matches, are limited to the program and its licence files, and the
 installer refuses path traversal and symlinked licence files. Build the binary yourself if you need to
 verify it independently; `make release-static` reproduces the release build.

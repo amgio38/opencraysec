@@ -8,8 +8,9 @@ Cargo.
 | Crate | What it owns |
 | --- | --- |
 | `opencraysec-core` | The package model, per-ecosystem version ordering, CVSS v3 scoring and OSV matching. No I/O. |
-| `opencraysec-lockfile` | Finding lockfiles and parsing them into packages. |
-| `opencraysec-db` | The local store, dataset updates, the OSV and NVD clients, the CWE catalog. |
+| `opencraysec-lockfile` | Finding lockfiles and parsing them (and SBOMs) into packages. |
+| `opencraysec-runtime` | Runtime products: version detection, release and end-of-life verdicts, NVD answers. A leaf with no network. |
+| `opencraysec-db` | The local store, dataset updates, the OSV and NVD clients, the CWE catalog, the release-data feeds. |
 | `opencraysec-engine` | Scan, usage evidence, code rules, explain, fix planning and verification, report formats. |
 | `opencraysec-log` | The activity log, dependency snapshots, report summaries. |
 | `opencraysec-web` | The read-only dashboard server and the HTML export. |

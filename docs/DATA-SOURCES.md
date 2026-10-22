@@ -2,7 +2,8 @@
 
 opencraysec does not maintain a vulnerability database. It downloads public data, matches it locally
 and reports where each fact came from. The data is not part of this software and stays under its
-publishers' terms; check them before redistributing it.
+publishers' terms; check them before redistributing it. opencraysec is not endorsed or certified by NIST
+or the NVD, by CISA, by FIRST, by MITRE, by endoflife.date or by php.net.
 
 | Source | Used for | How it is fetched |
 | --- | --- | --- |
