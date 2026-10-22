@@ -89,6 +89,10 @@ product@version arguments                  ─┴─►  Input ─► evaluate �
   A scan reads them without the network.
 - Verdicts talk about release lines, not CVEs, and every report says so. An unknown product or a version
   outside every known line is `unknown`, never `current`.
+- An SBOM (`lockfile::sbom`) is another way in for the package list: CycloneDX or SPDX JSON, matched by
+  purl, read only when named as the scan path. Operating-system and container components are counted as
+  not checked rather than dropped, and their `source` is `sbom:<file>`, which tells reachability there is
+  no source tree to read.
 - Version commands are never taken from downloaded data. They are spawned without a shell, with no stdin,
   a time limit and a cap on the output read.
 

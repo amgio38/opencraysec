@@ -17,6 +17,22 @@ reported as skipped rather than read.
 Every dependency found is recorded in the activity log's snapshot whatever `--ecosystem` narrows,
 so a later `record_fix` can tell what really changed.
 
+## SBOM files
+
+`scan` and `scan_dependencies` also accept a CycloneDX or SPDX JSON file as the path, which is how to
+check what has no lockfile you can read: a container image's inventory, or a list another tool wrote on
+another machine.
+
+- An SBOM is read only when it is named. A directory scan never picks one up, because an SBOM lying next
+  to a project is not that project's dependency list.
+- Components are matched by package URL (purl): `pkg:cargo`, `pkg:npm`, `pkg:composer`, `pkg:golang` and
+  `pkg:pypi` become packages and go through the same matching as a lockfile. Anything else (`pkg:deb`,
+  `pkg:apk`, container images, components with no purl or no version) is counted and listed under
+  `unchecked` with its type. Nothing is dropped quietly.
+- There is no source tree beside an SBOM, so usage evidence is `unknown` for these packages and their
+  `source` reads `sbom:<file>`.
+- Everything the tool exports as CycloneDX can be read back.
+
 ## Version ordering
 
 Advisory ranges are evaluated with each ecosystem's own rules: semver for crates.io, npm and Go

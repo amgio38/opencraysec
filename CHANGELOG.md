@@ -17,6 +17,11 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 - Versions come from a fixed table of version commands or from `product@version` arguments, which is how
   to check a container or another machine. Nothing in the downloaded data is ever executed.
 - New crate `opencraysec-runtime` (a leaf, no network), registered in the layering rules.
+- `scan` / `scan_dependencies` accept a CycloneDX or SPDX JSON file as the path. This is how to check an
+  inventory that has no lockfile: a container image's package list, or another machine's. Components are
+  matched by purl for the five supported ecosystems; operating-system packages, container images and
+  components with no purl or version are listed under `unchecked`, never dropped. An SBOM is only read
+  when named, so a directory scan does not pick up one lying next to a project.
 
 ## [0.20261021.1] - 2026-10-21
 

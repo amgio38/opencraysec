@@ -563,6 +563,17 @@ pub fn annotate(base: &Path, findings: &mut [Finding], notes: &mut Vec<String>) 
     let mut trees: HashMap<PathBuf, Tree> = HashMap::new();
     let mut truncated = false;
     for f in findings.iter_mut() {
+        if f.package
+            .source
+            .starts_with(opencraysec_lockfile::SBOM_SOURCE_PREFIX)
+        {
+            f.reachability = Some(Reachability {
+                level: "unknown".into(),
+                evidence: vec![],
+                note: "The package comes from an SBOM, which has no source tree beside it, so usage was not checked.".into(),
+            });
+            continue;
+        }
         let dir = base.join(
             Path::new(&f.package.source)
                 .parent()

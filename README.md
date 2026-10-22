@@ -104,6 +104,7 @@ tools report match what the agent sees.
 ```sh
 opencraysec scan .                       # human-readable report, most urgent first
 opencraysec scan . --format sarif -o out.sarif      # also: json, cyclonedx (SBOM)
+opencraysec scan bom.json                # a CycloneDX or SPDX SBOM: an image's inventory, another machine's list
 opencraysec scan . --fail-on high        # exit 1 in CI if anything is high or worse, 3 if nothing was checked
 opencraysec scan . --enrich-nvd          # score findings the advisories left unscored
 opencraysec explain GHSA-xxxx-xxxx-xxxx  # what it is, how bad, references

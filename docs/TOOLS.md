@@ -18,8 +18,9 @@ Common scan arguments (`scan_dependencies`, `plan_fix`, `verify_fix`):
 
 ## scan_dependencies
 
-Checks the lockfiles against current advisories. Extra argument: `limit` (default 50) caps the
-findings returned.
+Checks the lockfiles against current advisories. `path` may also be a CycloneDX or SPDX JSON file (see
+[LANGUAGES.md](LANGUAGES.md#sbom-files)); components that are not libraries of a supported ecosystem are
+listed in `notes` as not checked. Extra argument: `limit` (default 50) caps the findings returned.
 
 Result: `lockfiles`, `skipped`, `packages_checked`, `data_sources` (per ecosystem: `local`, `online` or
 `none`, and when the data was updated), `notes`, `informational_omitted`, `findings_total`,

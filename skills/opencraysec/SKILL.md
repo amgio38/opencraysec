@@ -37,6 +37,13 @@ TLS verification, unsafe deserialization). Every hit is a lead: open the file, t
 report what you can show. Never repeat a secret's value; say where it is and that it must be rotated.
 Pass `external: ["gitleaks"]` for a deeper secret scan if it is installed.
 
+## Inventories without a lockfile
+
+For a container image or another machine, ask for an SBOM (CycloneDX or SPDX JSON, for example from `syft`
+or `docker sbom`) and pass it as the `path` of `scan_dependencies`. Libraries of the five ecosystems are
+checked; read `notes` for the components that were not (operating-system packages are not matched yet).
+Usage evidence is always `unknown` for these.
+
 ## The runtime underneath
 
 Lockfiles do not list the interpreter or the servers, so `scan_dependencies` cannot see a flaw in PHP,

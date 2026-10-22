@@ -544,3 +544,68 @@ fn runtime_scan_judges_given_versions_offline_after_an_update() {
     };
     assert!(scan_runtime(&offline, &bad).is_err());
 }
+
+#[test]
+fn an_sbom_scans_like_the_lockfile_it_came_from_and_is_only_read_when_named() {
+    use opencraysec_engine::report::cyclonedx;
+
+    let dir = tempfile::tempdir().expect("tmp");
+    let store = store_with(dir.path(), None);
+    write_go_data(&store, &[go_advisory("GO-7", "CVE-2026-0007", "1.5.0")]);
+    let proj = go_project(dir.path(), "v1.0.0", USES_F);
+    let from_lock = scan(&store, &proj, &ScanOptions::default()).expect("scan");
+    assert_eq!(from_lock.findings.len(), 1);
+
+    // Our own CycloneDX output goes back in: the same advisory, found from the SBOM alone.
+    let bom = dir.path().join("elsewhere");
+    fs::create_dir_all(&bom).expect("mkdir");
+    let mut doc = cyclonedx(&from_lock);
+    doc["components"]
+        .as_array_mut()
+        .expect("components")
+        .push(serde_json::json!({"type":"library","name":"php8.2","purl":"pkg:deb/debian/php8.2@8.2.20-1"}));
+    fs::write(bom.join("bom.json"), doc.to_string()).expect("w");
+    let from_sbom = scan(&store, &bom.join("bom.json"), &ScanOptions::default()).expect("scan");
+    assert_eq!(from_sbom.findings.len(), 1);
+    assert_eq!(from_sbom.findings[0].id, from_lock.findings[0].id);
+    assert_eq!(
+        from_sbom.packages_checked, 1,
+        "the deb component is not matched"
+    );
+    assert!(
+        from_sbom.findings[0].package.source.starts_with("sbom:"),
+        "{}",
+        from_sbom.findings[0].package.source
+    );
+    let reach = from_sbom.findings[0]
+        .reachability
+        .as_ref()
+        .expect("annotated");
+    assert_eq!(
+        reach.level, "unknown",
+        "there is no source tree beside an SBOM"
+    );
+    assert!(
+        from_sbom
+            .unchecked
+            .iter()
+            .any(|(f, why)| f == "bom.json" && why.contains("deb: 1")),
+        "what was not checked is said, not dropped: {:?}",
+        from_sbom.unchecked
+    );
+
+    // An SBOM lying in a project is not that project's dependency list: a directory scan ignores it.
+    fs::write(proj.join("bom.json"), doc.to_string()).expect("w");
+    let dir_scan = scan(&store, &proj, &ScanOptions::default()).expect("scan");
+    assert_eq!(dir_scan.lockfiles, vec!["go.mod".to_string()]);
+
+    // A JSON file that is not an SBOM is reported as skipped with a reason, not scanned as nothing.
+    fs::write(bom.join("other.json"), "{}").expect("w");
+    let other = scan(&store, &bom.join("other.json"), &ScanOptions::default()).expect("scan");
+    assert!(
+        other
+            .skipped
+            .iter()
+            .any(|(_, why)| why.contains("CycloneDX or SPDX"))
+    );
+}

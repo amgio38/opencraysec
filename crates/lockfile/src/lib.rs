@@ -12,6 +12,9 @@ mod js;
 mod php;
 mod python;
 mod rust;
+mod sbom;
+
+pub use sbom::SOURCE_PREFIX as SBOM_SOURCE_PREFIX;
 
 /// Directories never descended into: dependency trees and build output.
 const SKIP_DIRS: &[&str] = &[
@@ -48,7 +51,8 @@ pub struct Discovery {
     pub unchecked: Vec<(String, String)>,
 }
 
-/// Which parser handles a file name, if any.
+/// Which parser handles a file name, if any. SBOMs are not listed here: they are recognised by being
+/// given as the scan path, not by their name.
 fn kind_of(name: &str) -> Option<&'static str> {
     match name {
         "Cargo.lock" => Some("cargo"),
@@ -79,6 +83,7 @@ pub fn parse_text(kind: &str, text: &str, source: &str) -> Result<Vec<Package>, 
         "poetry" | "uv" => python::toml_lock(text, source, kind == "uv"),
         "pipfile" => python::pipfile_lock(text, source),
         "requirements" => Ok(python::requirements(text, source)),
+        "sbom" => sbom::parse(text, source).map(|(packages, _)| packages),
         other => Err(format!("unknown lockfile kind {other}")),
     }
 }
@@ -131,7 +136,13 @@ pub fn discover(root: &Path, only: Option<&[Ecosystem]>) -> Discovery {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let Some(kind) = kind_of(&name) else { continue };
+        // An SBOM is only read when it is named: a directory walk never picks one up, because
+        // one lying around next to a project is not that project's dependency list.
+        let kind = match kind_of(&name) {
+            Some(k) => k,
+            None if root.is_file() && name.to_ascii_lowercase().ends_with(".json") => "sbom",
+            None => continue,
+        };
         let rel = relative_name(&path, base);
         if kind == "gosum" && path.with_file_name("go.mod").is_file() {
             continue;
@@ -154,7 +165,17 @@ pub fn discover(root: &Path, only: Option<&[Ecosystem]>) -> Discovery {
                 continue;
             }
         };
-        match parse_text(kind, &text, &rel) {
+        let parsed = if kind == "sbom" {
+            sbom::parse(&text, &rel).map(|(packages, note)| {
+                if let Some(n) = note {
+                    d.unchecked.push((rel.clone(), n));
+                }
+                packages
+            })
+        } else {
+            parse_text(kind, &text, &rel)
+        };
+        match parsed {
             Ok(pkgs) => {
                 if kind == "requirements" {
                     requirement_files.push((
