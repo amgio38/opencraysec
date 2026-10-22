@@ -61,7 +61,7 @@ pub fn list() -> Value {
         },
         {
             "name": "scan_code",
-            "description": "Find suspected weaknesses in the project's own source with a small built-in rule pack (hard-coded secrets, eval/command/SQL injection patterns, disabled TLS verification, unsafe deserialization; JS/TS, Python, PHP, Go, Rust). Every hit is a SUSPECTED issue: read the code path and reproduce before reporting it. Secret values are never returned. Optionally runs gitleaks or semgrep if installed.",
+            "description": "Find suspected weaknesses in the project's own source with a small built-in rule pack (hard-coded secrets, eval/command/SQL injection patterns, disabled TLS verification, unsafe deserialization, AI provider keys, a model\'s answer passed to eval/shell/SQL/HTML and prompts built from request input; JS/TS, Python, PHP, Go, Rust). Every hit is a SUSPECTED issue: read the code path and reproduce before reporting it. Secret values are never returned. Optionally runs gitleaks or semgrep if installed.",
             "inputSchema": { "type": "object", "properties": {
                 "path": path,
                 "external": { "type": "array", "items": { "type": "string", "enum": ["gitleaks", "semgrep"] }, "description": "Also run these scanners if installed." },

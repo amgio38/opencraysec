@@ -5,6 +5,7 @@ use std::fmt;
 
 pub mod agent;
 pub mod code;
+mod code_ai;
 pub mod explain;
 pub mod fix;
 pub mod reach;

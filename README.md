@@ -37,7 +37,10 @@ your machine.
   newest patch, the day a fix ships. With `--nvd` it also lists the CVEs NVD records for that exact
   version, which is how a flaw in PHP itself shows up.
 - **Your own code too**: `scan-code` flags suspected hard-coded secrets, injection patterns, disabled TLS
-  verification and unsafe deserialization, each with a CWE, and can run gitleaks or semgrep.
+  verification and unsafe deserialization, each with a CWE, and can run gitleaks or semgrep. For code that
+  calls an AI model it also looks for provider keys (Anthropic, Hugging Face, Google), a model's answer
+  passed to `eval`, a shell, SQL or HTML, and a prompt built from a request's input, with the OWASP LLM
+  Top 10 entry behind each rule.
 - **The files that steer your assistant**: `scan-agent-config` reads rule files (`CLAUDE.md`,
   `AGENTS.md`, `.cursorrules`, ...), MCP server settings, hooks, auto-run tasks and skills (a folder with
   a `SKILL.md`: its text, scripts and dependencies) for invisible characters, injected instructions,

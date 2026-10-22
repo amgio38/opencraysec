@@ -37,7 +37,12 @@ CLI to get current facts instead of guessing.
 `scan_code` flags suspected weaknesses in the project's source (secrets, injection patterns, disabled
 TLS verification, unsafe deserialization). Every hit is a lead: open the file, trace the data, and only
 report what you can show. Never repeat a secret's value; say where it is and that it must be rotated.
-Pass `external: ["gitleaks"]` for a deeper secret scan if it is installed.
+Pass `external: ["gitleaks"]` for a deeper secret scan if it is installed. For code that calls an AI
+model it also reports provider keys, a model's answer passed to `eval`, a shell, SQL or HTML
+(`ai-output-*`, OWASP LLM05), and a prompt or system message built from request input
+(`ai-prompt-concat`, `ai-system-prompt-user-input`, OWASP LLM01). The prompt rules are low or medium on
+purpose: many products put the user's words in a prompt deliberately, so read the code before you say
+it is an injection hole. A Google key may be a Firebase web key, which is meant to be public.
 
 ## The files that steer you
 

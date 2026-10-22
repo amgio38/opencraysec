@@ -56,6 +56,51 @@ another machine.
   `source` reads `sbom:<file>`.
 - Everything the tool exports as CycloneDX can be read back.
 
+## Rules for code that talks to an AI model
+
+Three groups of rules in `scan-code` look at code that calls an AI provider. They are pattern matches on
+one line, so every hit is **suspected**, and each of them misses code that is split across lines or
+statements. `scan-agent-config` uses the same key rules for the files it reads.
+
+**Provider keys.** A key is reported by the prefix its provider documents. The minimum lengths are this
+project's own, chosen so that a prefix in ordinary text does not match; the providers do not document one.
+
+| Provider | Prefix, and where it is documented | Rule |
+| --- | --- | --- |
+| Anthropic | `sk-ant-` for every key, with `sk-ant-api03-` for an API key, `sk-ant-admin01-` for an Admin API key and `sk-ant-api01-` for an Enterprise key: [Get your Claude API key](https://platform.claude.com/docs/en/get-api-key), [Create an Admin API key](https://platform.claude.com/docs/en/manage-claude/admin-api-keys) | `secret-anthropic-key` |
+| Hugging Face | `hf_`, shown in the [User access tokens](https://huggingface.co/docs/hub/security-tokens) page's own example | `secret-huggingface-token` |
+| Google | `AIza` followed by 35 characters, the shape of the example key in [API keys](https://docs.cloud.google.com/docs/authentication/api-keys); Google does not say every key looks like that | `secret-google-api-key` |
+| OpenAI | **No rule.** OpenAI's documentation pages could not be read, and community posts are not a documented format | none |
+
+`secret-google-api-key` is medium because a Firebase web key has the same shape and is meant to be in
+client code, while a Gemini or Cloud key is not. Look at what the key is allowed to do before you act.
+A line that says it is an example (`example`, `your`, `_here`, `placeholder`, ...) is skipped, like
+every secret rule.
+
+A test file that holds a key-shaped value is reported like any other file; put `opencraysec:ignore` on
+the line when it is a fixture.
+
+**A model's answer used as code.** The text of an answer, taken from the documented response shapes of
+the common SDKs (`choices[0].message.content`, `choices[0].text`, `content[0].text`, `.output_text`,
+and the dictionary form of the same JSON in Python), that is passed on the same line to `eval`, a shell
+call, a SQL call or an HTML sink. This is OWASP LLM05:2025, Improper Output Handling. It misses an
+answer kept in a variable first, a renamed field, another SDK's shape, and Go, Rust and PHP (there is no
+rule for them). It does not match `.text` or `.text()` alone, because that is also the body of an HTTP
+response. On a line where one of these rules matches, the ordinary rule for the same weakness (`js-eval`,
+`py-eval`, `js-exec-concat`, `py-shell-true`, `py-os-system`, `py-sql-format`, `js-innerhtml`) is not
+repeated; a different weakness on that line still is.
+
+**User input in a prompt.** A variable whose name contains `prompt`, or a `system` message, built by
+putting a request's input into a string with a template literal, an f-string, `+` or `.format(`. The
+input is recognised by name: `req.body`, `req.query`, `req.params`, `request.json`, `request.form`,
+`user_input`, `userMessage`, `input(`, `sys.argv` and the like. This is OWASP LLM01:2025, Prompt
+Injection. Many products do put the user's words into a prompt on purpose, so `ai-prompt-concat` is low
+and `ai-system-prompt-user-input` (the user's words inside the system message) is medium. A prompt built
+in another function, or from input that is not named like one, is missed. There is no rule for Go, Rust or PHP.
+
+The OWASP entries are from the [OWASP Top 10 for LLM Applications](https://genai.owasp.org/llm-top-10/)
+(2025). A leaked key is not one of the ten, so the key rules carry only their CWE.
+
 ## Version ordering
 
 Advisory ranges are evaluated with each ecosystem's own rules: semver for crates.io, npm and Go
@@ -133,6 +178,15 @@ comment on it or on the line above.
 | `py-os-system` | `os.system`, `os.popen` | CWE-78 | medium |
 | `py-verify-false` | `verify=False` | CWE-295 | high |
 | `py-sql-format` | `.execute(` with an f-string, `%` or `.format(` query | CWE-89 | high |
+| `secret-anthropic-key` | Anthropic API key (`sk-ant-api03-`, `sk-ant-admin01-`, `sk-ant-api01-`) | CWE-798 | high |
+| `secret-huggingface-token` | Hugging Face access token (`hf_`) | CWE-798 | high |
+| `secret-google-api-key` | Google API key (`AIza` and 35 more characters) | CWE-798 | medium |
+| `ai-output-eval` | A model's answer inside `eval(` / `new Function(` (JS, TS) or `eval(` / `exec(` (Python), on the same line | CWE-95 | high |
+| `ai-output-shell` | A model's answer inside a `child_process` call or `exec(` (JS, TS), or `os.system`, `subprocess.*`, `Popen` (Python) | CWE-78 | high |
+| `ai-output-sql` | A model's answer inside `.query(` / `.execute(` / `.raw(` | CWE-89 | high |
+| `ai-output-html` | A model's answer assigned to `innerHTML` / `outerHTML`, or inside `dangerouslySetInnerHTML`, `document.write(` (JS, TS) | CWE-79 | medium |
+| `ai-prompt-concat` | A variable named for a prompt built by putting `req.body`, `req.query`, `user_input`, `input(` and the like into a string (JS, TS, Python) | CWE-1427 | low |
+| `ai-system-prompt-user-input` | A `role: "system"` message whose content is built from the same request input | CWE-1427 | medium |
 | `php-eval` | `eval(` | CWE-95 | high |
 | `php-unserialize` | `unserialize($var)` | CWE-502 | high |
 | `php-exec-var` | `exec`/`system`/`shell_exec`/... with a variable | CWE-78 | high |

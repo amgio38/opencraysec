@@ -7,6 +7,14 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ### Added
 
+- `scan-code` rules for code that talks to an AI model, each with a CWE and, where there is one, the
+  OWASP Top 10 for LLM Applications (2025) entry: provider keys (`secret-anthropic-key`,
+  `secret-huggingface-token`, `secret-google-api-key`; prefixes from the providers' own documentation,
+  and none for OpenAI, whose documentation does not state a format), a model's answer passed on the same
+  line to `eval`, a shell, SQL or an HTML sink (`ai-output-eval`, `ai-output-shell`, `ai-output-sql`,
+  `ai-output-html`; JavaScript, TypeScript and Python), and a prompt or system message built from a
+  request's input (`ai-prompt-concat`, `ai-system-prompt-user-input`). Key hits are never printed. The
+  rules live in their own file, and a test keeps every rule documented.
 - Skills. `scan-agent-config` also reads every folder that holds a `SKILL.md` (wherever it sits, and
   `~/.claude/skills` with `--include-home`): the Markdown gets the instruction rules, a script gets the
   hidden-character, download-and-run and exfiltration rules and the secret rules, a shell script's

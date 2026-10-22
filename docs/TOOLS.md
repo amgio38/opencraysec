@@ -40,7 +40,9 @@ what was not scanned.
 
 ## scan_code
 
-Suspected weaknesses in the project's own source (see [LANGUAGES.md](LANGUAGES.md#code-rules-scan-code)).
+Suspected weaknesses in the project's own source (see [LANGUAGES.md](LANGUAGES.md#code-rules-scan-code),
+which also lists the rules for code that calls an AI model: provider keys, a model's answer used as code,
+and a prompt built from request input).
 Arguments: `path`, `external` (`["gitleaks"]`, `["semgrep"]`), `semgrep_config`, `limit` (default 100).
 Result: `files_scanned`, `findings` (`rule`, `title`, `cwe`, `severity`, `file`, `line`, `snippet`,
 `confidence: "suspected"`, `advice`, `source`), `external` (how each external scanner went), `notes`.

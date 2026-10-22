@@ -36,7 +36,7 @@ const MAX_SNIPPET: usize = 160;
 pub const IGNORE_MARKER: &str = "opencraysec:ignore";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Lang {
+pub(crate) enum Lang {
     Any,
     Js,
     Py,
@@ -45,16 +45,16 @@ enum Lang {
     Rust,
 }
 
-struct Rule {
-    id: &'static str,
-    title: &'static str,
-    cwe: &'static str,
-    severity: Severity,
-    lang: Lang,
-    pattern: &'static str,
-    advice: &'static str,
+pub(crate) struct Rule {
+    pub(crate) id: &'static str,
+    pub(crate) title: &'static str,
+    pub(crate) cwe: &'static str,
+    pub(crate) severity: Severity,
+    pub(crate) lang: Lang,
+    pub(crate) pattern: &'static str,
+    pub(crate) advice: &'static str,
     /// Secret-like hits are reported without their text.
-    secret: bool,
+    pub(crate) secret: bool,
 }
 
 const RULES: &[Rule] = &[
@@ -350,9 +350,13 @@ const RULES: &[Rule] = &[
     },
 ];
 
+/// Every built-in rule: the general ones here and the ones for code that talks to an AI model.
+fn all_rules() -> impl Iterator<Item = &'static Rule> {
+    RULES.iter().chain(crate::code_ai::RULES.iter())
+}
+
 static COMPILED: LazyLock<Vec<(&'static Rule, Regex)>> = LazyLock::new(|| {
-    RULES
-        .iter()
+    all_rules()
         .filter_map(|r| Regex::new(r.pattern).ok().map(|re| (r, re)))
         .collect()
 });
@@ -482,6 +486,7 @@ pub fn scan_text(rel: &str, lang: Lang2, text: &str, out: &mut Vec<CodeFinding>)
         if line.contains(IGNORE_MARKER) || prev_ignores {
             continue;
         }
+        let first_on_line = out.len();
         for (rule, re) in COMPILED.iter() {
             if rule.lang != Lang::Any && rule.lang != lang {
                 continue;
@@ -519,6 +524,18 @@ pub fn scan_text(rel: &str, lang: Lang2, text: &str, out: &mut Vec<CodeFinding>)
                 advice: rule.advice.into(),
                 source: "builtin".into(),
             });
+        }
+        // The rule for a model's answer reaching a sink says more than the general rule for the same
+        // weakness on the same line (`eval`, a shell, SQL, HTML), so the general one is not repeated.
+        let ai_weaknesses: Vec<String> = out[first_on_line..]
+            .iter()
+            .filter(|f| f.rule.starts_with("ai-output-"))
+            .map(|f| f.cwe.clone())
+            .collect();
+        if !ai_weaknesses.is_empty() {
+            let mut kept = out.split_off(first_on_line);
+            kept.retain(|f| f.rule.starts_with("ai-") || !ai_weaknesses.contains(&f.cwe));
+            out.extend(kept);
         }
     }
 }
@@ -940,7 +957,7 @@ mod tests {
 
     #[test]
     fn every_rule_pattern_compiles() {
-        assert_eq!(COMPILED.len(), RULES.len());
+        assert_eq!(COMPILED.len(), all_rules().count());
     }
 
     #[test]
