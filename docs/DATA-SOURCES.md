@@ -14,13 +14,15 @@ publishers' terms; check them before redistributing it.
 | [endoflife.date](https://endoflife.date) | Release lines, end-of-life dates and the latest patch release of about 480 products, for `scan-runtime` | `update`, one request (`/api/v1/products/full`) |
 | [php.net](https://www.php.net/releases/) | The newest PHP patch release per line, which php.net publishes before aggregators have it | `update` (`releases/active.php`); a failure here does not fail the update |
 | [NVD](https://nvd.nist.gov) | A CVSS score (v3.x or v4.0) and CWEs for findings the advisories left unscored | `--enrich-nvd`, per CVE, cached for 30 days |
+| [NVD](https://nvd.nist.gov) by CPE | The CVEs that apply to a runtime product at a version (PHP, nginx, a database), with their version ranges | `scan-runtime --nvd`, per product and version, cached for 12 hours |
 
 ## Why OSV does the matching
 
 OSV records affected versions against package coordinates (`npm/lodash@4.17.4`), so a lockfile can be
 matched exactly. NVD describes products with CPE strings, which do not map reliably to package
-names, so it produces both false positives and false negatives for libraries. NVD is therefore used
-only to add a score, never to decide whether a package is affected.
+names, so it produces both false positives and false negatives for libraries. For libraries NVD is
+therefore used only to add a score, never to decide whether a package is affected. Runtime products are
+the exception, because there a CPE (`cpe:2.3:a:php:php`) *is* the product's name; see below.
 
 ## Runtime products
 
@@ -38,9 +40,18 @@ the flaw, so it works the day a fix ships, before any CVE database has the entry
 - End of life is decided from the line's date and today's date, so a dataset downloaded before the date
   passed still gives the right answer.
 
-What it cannot tell you: whether a CVE affects the version. Distributions backport fixes without changing
-the upstream version number (an older `8.2.x` from your OS vendor may be patched), and an end-of-life line
-can still be patched by a vendor. The result says so in `notes` and never reports a clean bill of health.
+With `--nvd` it also asks NVD which CVEs apply to each product at its version. The CPE names come from
+the endoflife.date feed, and the version ranges are evaluated here rather than trusted: NVD's own filter
+also returns old entries that name every version of a product, which say nothing about a particular
+version. Those are counted and reported as left out. On 2026-10-22 NVD listed CVE-2026-109618 and
+CVE-2026-109619 for `php@8.4.26` (and not for `php@8.4.27`) while OSV did not have either yet. NVD answers
+are cached for 12 hours; unauthenticated NVD access allows 5 requests per 30 seconds, so set
+`NVD_API_KEY` if you scan many products.
+
+What it cannot tell you: without `--nvd`, whether a CVE affects the version. Distributions backport fixes
+without changing the upstream version number (an older `8.2.x` from your OS vendor may be patched), and an
+end-of-life line can still be patched by a vendor. NVD can lag a disclosure and its ranges can be wrong.
+The result says so in `notes` and never reports a clean bill of health.
 
 ## How findings are ordered
 

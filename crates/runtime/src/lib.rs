@@ -9,10 +9,12 @@
 //!
 //! The crate does no networking. `opencraysec-db` downloads the feeds; the engine joins the two.
 
+pub mod cve;
 pub mod detect;
 pub mod evaluate;
 pub mod lifecycle;
 
+pub use cve::{NvdOutcome, RuntimeCve, parse_cpe_response, rank, score_and_cwes};
 pub use detect::{DETECTORS, Detector, detect_all, extract_version, parse_given, run_version};
 pub use evaluate::{Input, ProductResult, Status, compare, evaluate, segments};
 pub use lifecycle::{Lifecycle, Product, Release, VendorLatest, parse_endoflife, parse_php_active};
@@ -29,7 +31,7 @@ pub struct DataInfo {
 }
 
 /// The result of a runtime scan.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RuntimeReport {
     /// RFC 3339 UTC time of the scan.
     pub scanned_at: String,

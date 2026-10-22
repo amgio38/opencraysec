@@ -32,6 +32,9 @@ pub struct Product {
     /// Other names the feed knows it by.
     #[serde(default)]
     pub aliases: Vec<String>,
+    /// CPE name of the product without a version (`cpe:2.3:a:php:php`), used to ask NVD.
+    #[serde(default)]
+    pub cpe: Vec<String>,
     /// Release lines, newest first.
     pub releases: Vec<Release>,
 }
@@ -89,6 +92,18 @@ pub fn parse_endoflife(json: &[u8], updated_at: String) -> Result<Lifecycle, Str
                         .collect()
                 })
                 .unwrap_or_default();
+            let cpe = p
+                .get("identifiers")
+                .and_then(Value::as_array)
+                .map(|ids| {
+                    ids.iter()
+                        .filter(|i| i.get("type").and_then(Value::as_str) == Some("cpe"))
+                        .filter_map(|i| i.get("id").and_then(Value::as_str))
+                        .filter(|id| id.starts_with("cpe:2.3:a:") && id.split(':').count() == 5)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
             let releases = p
                 .get("releases")?
                 .as_array()?
@@ -109,6 +124,7 @@ pub fn parse_endoflife(json: &[u8], updated_at: String) -> Result<Lifecycle, Str
             Some(Product {
                 name,
                 aliases,
+                cpe,
                 releases,
             })
         })
@@ -149,7 +165,10 @@ mod tests {
     use super::*;
 
     const EOL: &str = r#"{"result":[
-        {"name":"php","aliases":["php-fpm"],"releases":[
+        {"name":"php","aliases":["php-fpm"],"identifiers":[
+            {"type":"purl","id":"pkg:generic/php"},
+            {"type":"cpe","id":"cpe:/a:php:php"},
+            {"type":"cpe","id":"cpe:2.3:a:php:php"}],"releases":[
             {"name":"8.4","eolFrom":"2028-12-31","isEol":false,"latest":{"name":"8.4.26"}},
             {"name":"7.4","eolFrom":"2022-11-28","isEol":true,"latest":{"name":"7.4.33"}}]},
         {"name":"nodejs","releases":[{"name":"22","eolFrom":null,"isEol":false,"latest":null}]},
@@ -161,6 +180,11 @@ mod tests {
         assert_eq!(l.products.len(), 2, "a product without a name is dropped");
         let php = l.find("PHP-FPM").expect("alias, any case");
         assert_eq!(php.name, "php");
+        assert_eq!(
+            php.cpe,
+            vec!["cpe:2.3:a:php:php"],
+            "only the 2.3 form, without a version"
+        );
         assert_eq!(php.releases[1].name, "7.4");
         assert!(php.releases[1].is_eol);
         assert_eq!(php.releases[0].latest.as_deref(), Some("8.4.26"));

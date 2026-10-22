@@ -20,8 +20,8 @@ lockfiles ──► lockfile::discover ──► Vec<Package>
 
 - **Own matcher over OSV data.** Version ranges are evaluated in `core::osv` with a per-ecosystem
   ordering in `core::version` (semver, a PEP 440 subset, Composer stability ranks). We do not use NVD CPE
-  strings for matching: they do not carry package coordinates, so they produce both false positives and
-  false negatives for libraries.
+  strings for matching libraries: they do not carry package coordinates, so they produce both false
+  positives and false negatives. Runtime products are the one place CPE is used (below).
 - **Offline first.** `update` stores one JSONL file per ecosystem; each line is prefixed with the
   normalised package names it affects so a scan skips unrelated advisories without parsing them.
 - **Same issue, one finding.** GHSA, RustSec and Go ids that share an alias for the same package are merged.
@@ -87,7 +87,12 @@ product@version arguments                  ─┴─►  Input ─► evaluate �
   the detector table, the version comparison and the verdicts (`eol`, `outdated`, `current`, `unknown`).
 - `db::runtime_data` downloads and stores the two feeds; a failing vendor feed does not fail an update.
   A scan reads them without the network.
-- Verdicts talk about release lines, not CVEs, and every report says so. An unknown product or a version
+- With `--nvd`, `db::nvd::fetch_cpe` asks NVD for the CVEs of `cpe:2.3:a:vendor:product` at the version
+  (cached 12 hours; the CPE name and version are validated before they reach a URL or a file name, since
+  the name comes from downloaded data). `runtime::cve` evaluates the version ranges itself, counts entries
+  that name every version instead of listing them, and keeps an entry whose range it cannot read rather
+  than lose it. The engine ranks the CVEs with the local CISA KEV and EPSS data.
+- Without `--nvd`, verdicts talk about release lines, not CVEs, and every report says so. An unknown product or a version
   outside every known line is `unknown`, never `current`.
 - An SBOM (`lockfile::sbom`) is another way in for the package list: CycloneDX or SPDX JSON, matched by
   purl, read only when named as the scan path. Operating-system and container components are counted as

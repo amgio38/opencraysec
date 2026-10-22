@@ -504,6 +504,7 @@ fn runtime_scan_judges_given_versions_offline_after_an_update() {
             "php@8.4.26".into(),
             "nosuch@1.0".into(),
         ],
+        ..RuntimeOptions::default()
     };
 
     // Before any update: honest about knowing nothing.
@@ -541,6 +542,7 @@ fn runtime_scan_judges_given_versions_offline_after_an_update() {
     // A malformed argument is an error, not a silent skip.
     let bad = RuntimeOptions {
         products: vec!["php".into()],
+        ..RuntimeOptions::default()
     };
     assert!(scan_runtime(&offline, &bad).is_err());
 }
@@ -607,5 +609,87 @@ fn an_sbom_scans_like_the_lockfile_it_came_from_and_is_only_read_when_named() {
             .skipped
             .iter()
             .any(|(_, why)| why.contains("CycloneDX or SPDX"))
+    );
+}
+
+#[test]
+fn runtime_scan_with_nvd_lists_the_cves_for_that_version_and_caches_them() {
+    use opencraysec_db::runtime_data::update_runtime;
+    use opencraysec_engine::{RuntimeOptions, scan_runtime};
+
+    // A real NVD answer for php 8.4.26, trimmed: the two php2shell CVEs and an old entry that
+    // names every version of PHP.
+    let nvd = include_str!("fixtures/nvd_php_8_4_26.json");
+    let server = MockServer::start(vec![
+        Route::get(
+            "/eol",
+            r#"{"result":[
+                {"name":"php","identifiers":[{"type":"cpe","id":"cpe:2.3:a:php:php"}],
+                 "releases":[{"name":"8.4","eolFrom":"2028-12-31","isEol":false,"latest":{"name":"8.4.26"}}]},
+                {"name":"nocpe","releases":[{"name":"1","eolFrom":null,"isEol":false,"latest":{"name":"1.0.0"}}]}]}"#,
+        ),
+        Route::get("/php", r#"{"8":{"8.4":{"version":"8.4.27"}}}"#),
+        Route::get(
+            "/nvd?cpeName=cpe:2.3:a:php:php:8.4.26:*:*:*:*:*:*:*&isVulnerable&resultsPerPage=2000",
+            nvd,
+        ),
+    ]);
+    let dir = tempfile::tempdir().expect("tmp");
+    let store = store_with(dir.path(), Some(&server));
+    update_runtime(&store).expect("update");
+    // CISA lists one of them as exploited.
+    fs::write(
+        store.dir().join("kev.json"),
+        r#"{"updated_at":"t","ids":["CVE-2026-109619"]}"#,
+    )
+    .expect("w");
+    let opts = RuntimeOptions {
+        products: vec!["php@8.4.26".into(), "nocpe@1.0.0".into()],
+        nvd: true,
+    };
+    let r = scan_runtime(&store, &opts).expect("scans");
+
+    let php = r.results[0].nvd.as_ref().expect("asked");
+    assert_eq!(php.error, None);
+    let ids: Vec<&str> = php.cves.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        vec!["CVE-2026-109619", "CVE-2026-109618"],
+        "exploited first"
+    );
+    assert!(php.cves[0].known_exploited && !php.cves[1].known_exploited);
+    assert_eq!(php.cves[1].affects, vec!["8.4.0 <= v < 8.4.27"]);
+    // NVD gives v3.1 9.8 and v4.0 9.2; the existing precedence (v3.1 first) is kept.
+    assert_eq!(php.cves[1].cvss, Some(9.8));
+    assert_eq!(
+        php.all_versions_omitted, 1,
+        "the 2007 entry names every version"
+    );
+    let none = r.results[1].nvd.as_ref().expect("asked");
+    assert!(
+        none.error.as_deref().is_some_and(|e| e.contains("no CPE")),
+        "{none:?}"
+    );
+    assert!(r.notes.iter().any(|n| n.contains("name every version")));
+
+    // A second scan is answered from the cache: one request in total, and none without the server.
+    let again = scan_runtime(&Store::at(dir.path().join("data")), &opts).expect("scans");
+    assert_eq!(again.results[0].nvd.as_ref().expect("asked").cves.len(), 2);
+    let nvd_requests = server
+        .requests()
+        .iter()
+        .filter(|q| q.contains("cpeName"))
+        .count();
+    assert_eq!(nvd_requests, 1);
+
+    // Without `nvd` NVD is not asked at all.
+    let plain = RuntimeOptions {
+        products: vec!["php@8.4.26".into()],
+        ..RuntimeOptions::default()
+    };
+    assert!(
+        scan_runtime(&store, &plain).expect("scans").results[0]
+            .nvd
+            .is_none()
     );
 }

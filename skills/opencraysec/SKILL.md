@@ -49,8 +49,10 @@ Usage evidence is always `unknown` for these.
 Lockfiles do not list the interpreter or the servers, so `scan_dependencies` cannot see a flaw in PHP,
 nginx or Node.js themselves. `scan_runtime` covers that: it detects what is installed on this machine (or
 checks `products` such as `php@8.2.30`, which is how to check a container you cannot run commands in) and
-says whether the release line is `eol` or `outdated`. It judges release lines, not CVEs, so never present
-`outdated` as "vulnerable to X" and never present `current` as safe: read its `notes`. If it reports
+says whether the release line is `eol` or `outdated`. Without `nvd` it judges release lines, not CVEs, so
+never present `outdated` as "vulnerable to X" and never present `current` as safe: read its `notes`. Pass
+`nvd: true` to also get the CVEs NVD records for that exact version (network, slow without `NVD_API_KEY`):
+that is what finds a flaw in the interpreter or server itself. Say that NVD can lag a disclosure. If it reports
 `unknown` because no data is stored, offer `update_db` once. A version number older than upstream's latest
 may already be patched by the OS vendor; say so and point at the vendor's tracker.
 

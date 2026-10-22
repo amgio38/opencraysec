@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 
 use serde::Serialize;
 
+use crate::cve::NvdOutcome;
 use crate::lifecycle::{Lifecycle, Product, Release, VendorLatest};
 
 /// One product at one version, to be judged.
@@ -33,7 +34,7 @@ pub enum Status {
 }
 
 /// The verdict for one input.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ProductResult {
     /// The product as asked.
     pub product: String,
@@ -53,6 +54,9 @@ pub struct ProductResult {
     pub patches_behind: Option<u64>,
     /// One sentence a person can act on.
     pub advice: String,
+    /// What NVD lists for this version; `None` unless NVD was asked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvd: Option<NvdOutcome>,
 }
 
 /// Leading numeric segments of a version: `8.2.30-1+deb12u1` is `[8, 2, 30]`.
@@ -123,6 +127,7 @@ fn unknown(i: &Input, why: String) -> ProductResult {
         latest: None,
         patches_behind: None,
         advice: why,
+        nvd: None,
     }
 }
 
@@ -258,6 +263,7 @@ fn judge(
         latest,
         patches_behind,
         advice,
+        nvd: None,
     }
 }
 
@@ -282,6 +288,7 @@ mod tests {
                 Product {
                     name: "php".into(),
                     aliases: vec!["php-fpm".into()],
+                    cpe: vec![],
                     releases: vec![
                         rel("8.4", Some("2028-12-31"), false, "8.4.26"),
                         rel("8.2", Some("2026-12-31"), false, "8.2.31"),
@@ -291,11 +298,13 @@ mod tests {
                 Product {
                     name: "nodejs".into(),
                     aliases: vec!["node".into()],
+                    cpe: vec![],
                     releases: vec![rel("22", Some("2027-04-30"), false, "22.11.0")],
                 },
                 Product {
                     name: "oldthing".into(),
                     aliases: vec![],
+                    cpe: vec![],
                     releases: vec![rel("1", Some("2020-01-01"), false, "1.9.9")],
                 },
             ],
@@ -390,6 +399,7 @@ mod tests {
         let p = Product {
             name: "x".into(),
             aliases: vec![],
+            cpe: vec![],
             releases: vec![
                 rel("2", None, false, "2.9"),
                 rel("8.2", None, false, "8.2.9"),

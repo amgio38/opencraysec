@@ -86,18 +86,24 @@ stored as AI-reported. Fails when logging is off.
 
 Checks the interpreters, servers and databases the application runs on (PHP, nginx, Node.js, MySQL,
 ...). No lockfile lists these, so a flaw in PHP itself is invisible to `scan_dependencies`. This tool
-judges release lines, not CVEs: `eol` means upstream no longer fixes that line, `outdated` means a newer
-patch release exists, `current` means neither, `unknown` means the data could not say. See
+judges release lines: `eol` means upstream no longer fixes that line, `outdated` means a newer patch
+release exists, `current` means neither, `unknown` means the data could not say. With `nvd: true` it also
+lists the CVEs NVD records for each product at its version, which is what finds a flaw in PHP itself. See
 [DATA-SOURCES.md](DATA-SOURCES.md#runtime-products).
 
-Argument: `products`, a list of `product@version` strings (`php@8.2.30`, `nodejs@20.11.0`). Without it
+Arguments: `nvd` (boolean, default `false`) and `products`, a list of `product@version` strings (`php@8.2.30`, `nodejs@20.11.0`). Without it
 the tool runs a fixed set of version commands on this machine (`php --version`, `nginx -v`, `node
 --version`, ...); with it nothing is executed, which is how to check a container or another machine.
-It reads only locally stored data and never uses the network; run `update_db` once to download it.
+Release data is read from the local store (run `update_db` once to download it). The network is used only
+for `nvd: true`: answers are cached for 12 hours, NVD allows 5 requests per 30 s without `NVD_API_KEY`, at
+most 10 products are asked per call, and offline mode refuses it.
 
 Result: `scanned_at`, `data` (when the end-of-life data and each vendor feed were downloaded),
 `results` (per product: `product`, `version`, `source`, `status`, `cycle`, `eol_from`, `latest`,
-`patches_behind`, `advice`) and `notes`. **Read `notes`**: it says what was not looked at and why a
+`patches_behind`, `advice`, and with `nvd` an `nvd` object) and `notes`. The `nvd` object has `cves`
+(most urgent first: `id`, `published`, `summary`, `cvss`, `cwes`, `affects`, `known_exploited`, `epss`),
+`all_versions_omitted` (old entries that name every version of the product, counted but not listed),
+`truncated` and `error` (why NVD was not asked or failed). **Read `notes`**: it says what was not looked at and why a
 distribution's older version number may already be patched.
 
 ## update_db

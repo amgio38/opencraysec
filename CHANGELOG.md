@@ -14,6 +14,11 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 - `update` (and `update_db`) also download the end-of-life data (endoflife.date) and the newest PHP patch
   releases (php.net). A scan reads them without the network. The php.net feed is there because aggregators
   lag a vendor by a day or more; if it fails, the update still succeeds.
+- `scan-runtime --nvd` (and `scan_runtime` with `nvd: true`) asks NVD which CVEs apply to each product at
+  its version, by CPE name, and ranks them with the local CISA KEV and EPSS data. The version ranges are
+  evaluated locally; old entries that name every version of a product are counted, not listed; an entry
+  whose range cannot be read is kept and flagged. Answers are cached for 12 hours. On 2026-10-22 this is
+  what lists CVE-2026-109618 and CVE-2026-109619 for PHP 8.4.26 while OSV had neither.
 - Versions come from a fixed table of version commands or from `product@version` arguments, which is how
   to check a container or another machine. Nothing in the downloaded data is ever executed.
 - New crate `opencraysec-runtime` (a leaf, no network), registered in the layering rules.

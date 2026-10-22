@@ -130,6 +130,10 @@ enum Cmd {
         /// Versions to check instead of detecting what is installed, as product@version
         /// (php@8.2.30). The way to check a machine or container you are not on.
         products: Vec<String>,
+        /// Also ask NVD which CVEs apply to each product at its version (network; answers are
+        /// cached for 12 hours; NVD allows 5 requests per 30 s without NVD_API_KEY).
+        #[arg(long)]
+        nvd: bool,
         /// Output format.
         #[arg(long, value_enum, default_value = "text")]
         format: RuntimeFormat,
@@ -287,6 +291,54 @@ fn workspace_of(path: &Path) -> String {
         .to_string()
 }
 
+/// The NVD part of one product's block: the CVEs, or why there are none to show.
+fn push_nvd_text(s: &mut String, n: &opencraysec_runtime::NvdOutcome) {
+    const SHOWN: usize = 10;
+    if let Some(e) = &n.error {
+        s.push_str(&format!("  NVD: {e}\n"));
+        return;
+    }
+    if n.cves.is_empty() {
+        s.push_str("  NVD: no CVE lists this version\n");
+    }
+    for c in n.cves.iter().take(SHOWN) {
+        s.push_str(&format!(
+            "  {}  CVSS {}  {}{}{}  affects {}\n    {}\n",
+            c.id,
+            c.cvss.map_or("-".to_string(), |v| format!("{v:.1}")),
+            if c.cwes.is_empty() {
+                "-".to_string()
+            } else {
+                c.cwes.join(",")
+            },
+            if c.known_exploited { "  KEV" } else { "" },
+            c.epss
+                .map_or(String::new(), |e| format!("  EPSS {:.0}%", e * 100.0)),
+            c.affects.join("; "),
+            c.summary
+        ));
+    }
+    if n.cves.len() > SHOWN {
+        s.push_str(&format!(
+            "  ... and {} more (see --format json)\n",
+            n.cves.len() - SHOWN
+        ));
+    }
+    if n.all_versions_omitted > 0 {
+        let one = n.all_versions_omitted == 1;
+        s.push_str(&format!(
+            "  NVD: {} older {} that {} every version of the product {} left out\n",
+            n.all_versions_omitted,
+            if one { "entry" } else { "entries" },
+            if one { "names" } else { "name" },
+            if one { "was" } else { "were" }
+        ));
+    }
+    if n.truncated {
+        s.push_str("  NVD: more results exist than one response carried\n");
+    }
+}
+
 /// The runtime report for a terminal: one block per product, then what was and was not checked.
 fn runtime_text(r: &opencraysec_runtime::RuntimeReport) -> String {
     let mut s = String::new();
@@ -301,6 +353,9 @@ fn runtime_text(r: &opencraysec_runtime::RuntimeReport) -> String {
             "{} {}  {tag}  [{}]\n  {}\n",
             x.product, x.version, x.source, x.advice
         ));
+        if let Some(n) = &x.nvd {
+            push_nvd_text(&mut s, n);
+        }
     }
     if r.results.is_empty() {
         s.push_str("nothing was judged\n");
@@ -468,18 +523,22 @@ fn execute(
             }
             Ok(0)
         }
-        Cmd::ScanRuntime { products, format } => {
-            let r =
-                scan_runtime(&store, &RuntimeOptions { products }).map_err(|e| e.to_string())?;
+        Cmd::ScanRuntime {
+            products,
+            nvd,
+            format,
+        } => {
+            let r = scan_runtime(&store, &RuntimeOptions { products, nvd })
+                .map_err(|e| e.to_string())?;
             let text = match format {
                 RuntimeFormat::Json => pretty(&r)?,
                 RuntimeFormat::Text => runtime_text(&r),
             };
             emit(out, None, &text)?;
-            let bad = r
-                .results
-                .iter()
-                .any(|x| matches!(x.status, RtStatus::Eol | RtStatus::Outdated));
+            let bad = r.results.iter().any(|x| {
+                matches!(x.status, RtStatus::Eol | RtStatus::Outdated)
+                    || x.nvd.as_ref().is_some_and(|n| !n.cves.is_empty())
+            });
             let judged = r.results.iter().any(|x| x.status != RtStatus::Unknown);
             Ok(if bad {
                 EXIT_FINDINGS
@@ -1273,11 +1332,21 @@ mod tests {
             Route::get("/epss", gz),
             Route::get(
                 "/eol",
-                r#"{"result":[{"name":"php","releases":[
+                r#"{"result":[{"name":"php","identifiers":[{"type":"cpe","id":"cpe:2.3:a:php:php"}],"releases":[
                     {"name":"8.4","eolFrom":"2028-12-31","isEol":false,"latest":{"name":"8.4.26"}},
                     {"name":"7.4","eolFrom":"2022-11-28","isEol":true,"latest":{"name":"7.4.33"}}]}]}"#,
             ),
             Route::get("/php", r#"{"8":{"8.4":{"version":"8.4.27"}}}"#),
+            Route::get(
+                "/nvd?cpeName=cpe:2.3:a:php:php:8.4.26:*:*:*:*:*:*:*&isVulnerable&resultsPerPage=2000",
+                r#"{"totalResults":1,"vulnerabilities":[{"cve":{"id":"CVE-2026-109618","published":"2026-10-21T14:00:00.000",
+                    "descriptions":[{"lang":"en","value":"PHP uses longjmp() for OOM"}],
+                    "metrics":{"cvssMetricV31":[{"type":"Primary","cvssData":{"baseScore":9.8}}]},
+                    "weaknesses":[{"description":[{"value":"CWE-416"}]}],
+                    "configurations":[{"nodes":[{"cpeMatch":[{"vulnerable":true,
+                        "criteria":"cpe:2.3:a:php:php:*:*:*:*:*:*:*:*",
+                        "versionStartIncluding":"8.4.0","versionEndExcluding":"8.4.27"}]}]}]}}]}"#,
+            ),
             Route::get(
                 "/cwe",
                 zip_of(&[(
@@ -1293,6 +1362,8 @@ mod tests {
             cwe: format!("{}/cwe", server.base),
             eol: format!("{}/eol", server.base),
             php_releases: format!("{}/php", server.base),
+            nvd: format!("{}/nvd", server.base),
+            nvd_gap_ms: Some(0),
             ..opencraysec_db::Endpoints::default()
         };
         let dir = tempfile::tempdir().expect("tmp");
@@ -1353,6 +1424,23 @@ mod tests {
         ]);
         assert_eq!(code, 0, "{out}");
         assert!(out.contains("\"status\": \"current\""), "{out}");
+        let (code, out, _) = run_it(&[
+            "opencraysec",
+            "--data-dir",
+            d,
+            "scan-runtime",
+            "php@8.4.26",
+            "--nvd",
+        ]);
+        assert_eq!(code, EXIT_FINDINGS, "{out}");
+        for want in [
+            "CVE-2026-109618",
+            "CVSS 9.8",
+            "CWE-416",
+            "affects 8.4.0 <= v < 8.4.27",
+        ] {
+            assert!(out.contains(want), "{want} missing from {out}");
+        }
         let (code, _, err) = run_it(&["opencraysec", "--data-dir", d, "scan-runtime", "nonsense"]);
         assert_eq!(code, EXIT_FAILED, "{err}");
         let (code, out, _) =

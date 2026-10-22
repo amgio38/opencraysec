@@ -487,6 +487,16 @@ fn update_db_stores_datasets_when_the_sources_answer() {
     assert!(rt["structuredContent"]["data"]["lifecycle_updated_at"].is_string());
     let bad = call(&cfg, "scan_runtime", json!({"products": ["php"]}));
     assert_eq!(bad["isError"], true);
+    let nvd = call(
+        &cfg,
+        "scan_runtime",
+        json!({"products": ["php@7.4.33"], "nvd": true}),
+    );
+    assert_eq!(
+        nvd["isError"], true,
+        "offline mode refuses NVD lookups: {nvd}"
+    );
+    assert!(nvd.to_string().contains("offline"), "{nvd}");
 }
 
 #[test]

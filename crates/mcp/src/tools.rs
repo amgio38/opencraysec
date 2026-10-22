@@ -71,9 +71,12 @@ pub fn list() -> Value {
         },
         {
             "name": "scan_runtime",
-            "description": "Check the interpreters, servers and databases the application runs on (PHP, nginx, Node.js, MySQL, ...) - things no lockfile lists - against release and end-of-life data stored locally. Reports end-of-life release lines and missing patch releases. It does NOT check CVEs: a flaw in PHP itself shows up as `outdated` or `eol`, not as an advisory. Without `products` it runs a fixed set of version commands on this machine (php --version, nginx -v, ...); pass `products` (php@8.2.30) to check a machine or container you cannot run commands on. Needs `update_db` once for the data; never uses the network.",
-            "inputSchema": { "type": "object", "properties": { "products": { "type": "array", "items": { "type": "string" }, "description": "product@version entries, for example php@8.2.30 or nodejs@20.11.0. Omit to detect what is installed here." } } },
-            "annotations": { "readOnlyHint": true, "openWorldHint": false }
+            "description": "Check the interpreters, servers and databases the application runs on (PHP, nginx, Node.js, MySQL, ...) - things no lockfile lists - against release and end-of-life data stored locally. Reports end-of-life release lines and missing patch releases. Without `nvd` it does not check CVEs: a flaw in PHP itself shows up as `outdated` or `eol`, not as an advisory; with `nvd: true` it also lists the CVEs NVD records for each product at its version. Without `products` it runs a fixed set of version commands on this machine (php --version, nginx -v, ...); pass `products` (php@8.2.30) to check a machine or container you cannot run commands on. Needs `update_db` once for the release data. Uses the network only when `nvd` is true.",
+            "inputSchema": { "type": "object", "properties": {
+                "products": { "type": "array", "items": { "type": "string" }, "description": "product@version entries, for example php@8.2.30 or nodejs@20.11.0. Omit to detect what is installed here." },
+                "nvd": { "type": "boolean", "description": "Also ask NVD which CVEs apply to each product at its version (network, answers cached 12 hours, slow without NVD_API_KEY, at most 10 lookups per call). This is what finds a flaw in PHP itself. Default false. Disabled in offline mode." }
+            } },
+            "annotations": { "readOnlyHint": true, "openWorldHint": true }
         },
         {
             "name": "explain_advisory",
@@ -260,8 +263,13 @@ pub fn call(cfg: &ServerConfig, name: &str, args: &Value) -> Result<Value, ToolE
             Ok(serde_json::to_value(r).unwrap_or(Value::Null))
         }
         "scan_runtime" => {
+            let nvd = args.get("nvd").and_then(|v| v.as_bool()).unwrap_or(false);
+            if nvd && cfg.offline {
+                return fail("the server runs in offline mode; nvd lookups are disabled");
+            }
             let opts = RuntimeOptions {
                 products: string_list(args, "products"),
+                nvd,
             };
             let report = scan_runtime(&cfg.store, &opts).or_else(|e| fail(e.to_string()))?;
             Ok(serde_json::to_value(report).unwrap_or(Value::Null))

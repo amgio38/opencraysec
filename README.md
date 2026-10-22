@@ -30,7 +30,8 @@ your machine.
   `unknown`, and that proves nothing.
 - **The runtime underneath too**: `scan-runtime` checks PHP, nginx, Node.js, databases and similar
   products that no lockfile lists, and says whether their release line is end of life or behind its
-  newest patch. It judges release lines, not CVEs, and works the day a fix ships.
+  newest patch, the day a fix ships. With `--nvd` it also lists the CVEs NVD records for that exact
+  version, which is how a flaw in PHP itself shows up.
 - **Your own code too**: `scan-code` flags suspected hard-coded secrets, injection patterns, disabled TLS
   verification and unsafe deserialization, each with a CWE, and can run gitleaks or semgrep.
 - **A report people can read**: a read-only dashboard with charts, the vulnerability list and the history
@@ -114,6 +115,7 @@ opencraysec record-fix . --id GHSA-xxxx-xxxx-xxxx --summary "Upgrade lodash" --r
 opencraysec scan-code .                  # suspected weaknesses in your own source
 opencraysec scan-runtime                # PHP, nginx, Node.js ... installed here: end of life? behind?
 opencraysec scan-runtime php@8.2.30     # or name the versions, for a container or another machine
+opencraysec scan-runtime --nvd          # also the CVEs NVD lists for those versions (network)
 opencraysec dashboard                    # the report on http://localhost:1787
 opencraysec report -o report.html        # the same report as one file
 opencraysec status                       # what data is stored, and how old
