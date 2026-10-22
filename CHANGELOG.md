@@ -5,6 +5,11 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ## [Unreleased]
 
+## [0.20261022.1] - 2026-10-22
+
+Adds checks for what no lockfile lists: the interpreter and servers an application runs on (a flaw in PHP
+itself, such as CVE-2026-109618 and CVE-2026-109619, was invisible to every earlier scan), and SBOMs.
+
 ### Added
 
 - `scan-runtime` (MCP tool `scan_runtime`): checks the interpreters, servers and databases an application
@@ -27,6 +32,27 @@ The release workflow refuses a tag whose version has no `## [version]` section.
   matched by purl for the five supported ecosystems; operating-system packages, container images and
   components with no purl or version are listed under `unchecked`, never dropped. An SBOM is only read
   when named, so a directory scan does not pick up one lying next to a project.
+
+### Changed
+
+- `update` (and `update_db`) also download the runtime release data. A failing endoflife.date download
+  makes `update` exit 4 after the other sources were refreshed; a failing php.net download is only a
+  warning, because it is an optional, fresher source.
+- `docs/DATA-SOURCES.md` no longer says NVD never decides whether something is affected: that holds for
+  libraries, where a CPE name does not identify a package, and not for runtime products, where it does.
+- The NVD score and weakness reader is shared by `--enrich-nvd` and `--nvd`; no behaviour change.
+
+### Documentation
+
+- `SECURITY.md` says what `scan-runtime` runs (a fixed list of version commands, no shell, a time limit and
+  an output cap, never anything from downloaded data), what it sends to NVD, and which new sources it
+  downloads from.
+- `docs/CONFIGURATION.md` lists the new data files, the `OPENCRAYSEC_EOL_URL` and
+  `OPENCRAYSEC_PHP_RELEASES_URL` mirrors, `NVD_API_KEY` for `--nvd`, the new limits, network use and exit
+  codes. `docs/TROUBLESHOOTING.md` covers `unknown` runtime verdicts, backported distribution packages, slow NVD
+  lookups and SBOM components that were not checked.
+- `README.md`, `CONTRIBUTING.md`, `docs/CLIENTS.md`, `docs/TOOLS.md`, `docs/LANGUAGES.md`,
+  `docs/ARCHITECTURE.md` and the bundled Agent Skill describe the new crate, tool and SBOM input.
 
 ## [0.20261021.1] - 2026-10-21
 
