@@ -15,7 +15,7 @@
 use opencraysec_core::Severity;
 use opencraysec_lockfile::workflow::{Pin, classify, uses_reference};
 
-use crate::code::{CodeFinding, IGNORE_MARKER};
+use crate::code::{CodeFinding, ignored_at as ignored};
 
 /// One rule: what it looks for and the entry that fits it best.
 pub(crate) struct GhaRule {
@@ -166,13 +166,6 @@ fn indent_of(line: &str) -> usize {
 fn is_comment(line: &str) -> bool {
     let t = line.trim_start();
     t.is_empty() || t.starts_with('#')
-}
-
-fn ignored(lines: &[&str], i: usize) -> bool {
-    lines[i].contains(IGNORE_MARKER)
-        || (i > 0
-            && lines[i - 1].trim_start().starts_with('#')
-            && lines[i - 1].contains(IGNORE_MARKER))
 }
 
 /// True when a line, outside a comment, names the trigger (`pull_request_target`, `workflow_run`).

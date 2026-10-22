@@ -472,6 +472,31 @@ fn is_comment(line: &str) -> bool {
     t.starts_with("//") || t.starts_with('#') || t.starts_with("/*") || t.starts_with('*')
 }
 
+/// True when line `i` carries the ignore marker, or the line above is a comment that holds nothing
+/// else: `// marker`, `# marker`, `/* marker */`, `<!-- marker -->`. Every scanner uses this one rule.
+pub(crate) fn ignored_at(lines: &[&str], i: usize) -> bool {
+    lines[i].contains(IGNORE_MARKER) || (i > 0 && is_marker_comment(lines[i - 1]))
+}
+
+fn is_marker_comment(line: &str) -> bool {
+    let t = line.trim();
+    let t = t
+        .strip_prefix("<!--")
+        .or_else(|| t.strip_prefix("/*"))
+        .or_else(|| {
+            t.starts_with(['/', '#', '*'])
+                .then(|| t.trim_start_matches(['/', '#', '*']))
+        });
+    t.is_some_and(|t| {
+        let t = t.trim();
+        let t = t
+            .strip_suffix("*/")
+            .or_else(|| t.strip_suffix("-->"))
+            .unwrap_or(t);
+        t.trim() == IGNORE_MARKER
+    })
+}
+
 /// Applies the built-in rules to one file's text.
 pub fn scan_text(rel: &str, lang: Lang2, text: &str, out: &mut Vec<CodeFinding>) {
     let lang = lang.0;
@@ -480,10 +505,7 @@ pub fn scan_text(rel: &str, lang: Lang2, text: &str, out: &mut Vec<CodeFinding>)
         if line.len() > 2000 {
             continue;
         }
-        // `opencraysec:ignore` on the line, or alone on the line above, silences it.
-        let prev_ignores =
-            i > 0 && lines[i - 1].trim().ends_with(IGNORE_MARKER) && is_comment(lines[i - 1]);
-        if line.contains(IGNORE_MARKER) || prev_ignores {
+        if ignored_at(&lines, i) {
             continue;
         }
         let first_on_line = out.len();
@@ -1053,6 +1075,36 @@ mod tests {
     }
 
     #[test]
+    fn the_marker_alone_in_any_comment_style_on_the_line_above_silences_the_next_line() {
+        for above in [
+            "// opencraysec:ignore",
+            "# opencraysec:ignore",
+            "/* opencraysec:ignore */",
+            "<!-- opencraysec:ignore -->",
+            "  * opencraysec:ignore",
+        ] {
+            assert!(
+                rules("a.js", &format!("{above}\neval(x);")).is_empty(),
+                "{above}"
+            );
+        }
+        // A comment that says more, or a line of code that ends with the marker, is not "alone".
+        assert_eq!(
+            rules("a.js", "// see opencraysec:ignore for how\neval(x);").len(),
+            1
+        );
+        assert_eq!(
+            rules("a.js", "foo(); /* opencraysec:ignore */\neval(x);").len(),
+            1
+        );
+        // The marker silences one line, not the ones after it.
+        assert_eq!(
+            rules("a.js", "/* opencraysec:ignore */\neval(x);\neval(y);").len(),
+            1
+        );
+    }
+
+    #[test]
     fn secrets_are_flagged_but_never_echoed() {
         let f = hits("conf.yaml", "key: AKIAABCDEFGHIJKLMNOP"); // opencraysec:ignore
         assert_eq!(f[0].rule, "secret-aws-key");
@@ -1087,18 +1139,16 @@ mod tests {
             .is_empty()
         );
         // The same shapes without a marker are still reported, and so is a private key header.
-        assert_eq!(
-            hits("a.yaml", "key: AKIAABCDEFGHIJKLMNOP")[0].rule,
-            "secret-aws-key"
-        ); // opencraysec:ignore
+        // opencraysec:ignore
+        let aws = hits("a.yaml", "key: AKIAABCDEFGHIJKLMNOP");
+        assert_eq!(aws[0].rule, "secret-aws-key");
         assert_eq!(
             hits("a.js", "apiKey: \"abcdefghijklmnop1234\",")[0].rule,
             "secret-assigned-literal"
         );
-        assert_eq!(
-            hits("a.env", "-----BEGIN PRIVATE KEY----- example")[0].rule,
-            "secret-private-key"
-        );
+        // opencraysec:ignore
+        let key = hits("a.env", "-----BEGIN PRIVATE KEY----- example");
+        assert_eq!(key[0].rule, "secret-private-key");
     }
 
     #[test]

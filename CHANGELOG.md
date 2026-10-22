@@ -82,6 +82,12 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 - The dashboard has a "Malicious packages" number and a `MALICIOUS` tag in the findings table; scan events
   in the activity log carry `malicious`.
 
+### Fixed
+
+- The `opencraysec:ignore` marker alone in a `/* */` or `<!-- -->` comment on the line above now silences
+  the next line in `scan-code` too (only `//` and `#` worked), and `scan-code`, the workflow rules and
+  `scan-agent-config` share one rule for it instead of three that disagreed.
+
 ## [0.20261022.2] - 2026-10-22
 
 Completes `scan-runtime`, which 0.20261022.1 shipped without a place in the report: a runtime scan was not

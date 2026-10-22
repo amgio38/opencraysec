@@ -28,7 +28,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::EngineError;
-use crate::code::{CodeFinding, CodeReport, IGNORE_MARKER, lang_for, scan_text};
+use crate::code::{CodeFinding, CodeReport, ignored_at, lang_for, scan_text};
 use crate::report::malicious_advice;
 use crate::scan::{ScanOptions, scan_discovered};
 
@@ -366,19 +366,6 @@ fn matches(re: &LazyLock<Option<Regex>>, line: &str) -> bool {
     re.as_ref().is_some_and(|r| r.is_match(line))
 }
 
-/// True for a line that carries the ignore marker, or sits under a comment that is only the marker.
-fn ignored(lines: &[&str], i: usize) -> bool {
-    let line = lines[i];
-    if line.contains(IGNORE_MARKER) {
-        return true;
-    }
-    i > 0 && {
-        let prev = lines[i - 1].trim();
-        prev.contains(IGNORE_MARKER)
-            && (prev.starts_with("<!--") || prev.starts_with('#') || prev.starts_with("//"))
-    }
-}
-
 /// Code points on this line that a reader cannot see but an assistant reads, by code point, with
 /// no repeats. Zero-width characters count only next to an ASCII character: between two letters of
 /// a script that needs them (or inside an emoji sequence) they are ordinary text.
@@ -416,7 +403,7 @@ fn scan_lines(ctx: &mut Ctx, rel: &str, kind: Kind, text: &str) {
             let ends = line.contains("-->");
             open_comment = in_comment && !ends;
         }
-        if line.len() > MAX_LINE || ignored(&lines, i) {
+        if line.len() > MAX_LINE || ignored_at(&lines, i) {
             continue;
         }
         let n = i + 1;

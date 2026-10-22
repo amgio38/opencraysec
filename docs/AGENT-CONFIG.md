@@ -87,7 +87,8 @@ applies), with the same rule that the value is never printed.
 
 ## Silencing a line
 
-Put `opencraysec:ignore` on the line, or alone in a comment on the line above:
+Put `opencraysec:ignore` on the line, or alone in a comment on the line above (`//`, `#`, `/* */` or
+`<!-- -->`; a comment that says anything else as well does not count):
 
 ```md
 <!-- opencraysec:ignore -->

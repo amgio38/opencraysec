@@ -212,7 +212,9 @@ are never hidden; findings that are exploited in the wild always lead.
 Pattern rules applied line by line to JS/TS (`js ts jsx tsx mjs cjs vue svelte`), Python, PHP, Go,
 Rust, and, for the secret rules, common config files. Every hit is a **suspected** issue with a CWE;
 secret hits never include the matched text. Silence a known-fine line with an `opencraysec:ignore`
-comment on it or on the line above.
+comment on it, or alone in a comment on the line above (`//`, `#`, `/* */` or `<!-- -->`). A comment
+that says anything else as well does not count. One rule is shared by `scan-code`, the workflow rules and
+`scan-agent-config`.
 
 | Rule | Finds | CWE | Severity |
 | --- | --- | --- | --- |
