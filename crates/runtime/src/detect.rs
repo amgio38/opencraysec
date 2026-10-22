@@ -129,6 +129,11 @@ pub fn extract_version(output: &str) -> Option<String> {
 /// writes to stderr). `None` when the program is missing, fails to start, times out or prints
 /// no version.
 pub fn run_version(argv: &[&str]) -> Option<String> {
+    run_version_within(argv, TIMEOUT)
+}
+
+/// [`run_version`] with an explicit time limit.
+fn run_version_within(argv: &[&str], limit: Duration) -> Option<String> {
     let (program, args) = argv.split_first()?;
     let mut child = Command::new(program)
         .args(args)
@@ -158,7 +163,7 @@ pub fn run_version(argv: &[&str]) -> Option<String> {
             .take()
             .map(|p| Box::new(p) as Box<dyn Read + Send>),
     );
-    let deadline = Instant::now() + TIMEOUT;
+    let deadline = Instant::now() + limit;
     loop {
         match child.try_wait() {
             Ok(Some(_)) => break,
@@ -166,7 +171,10 @@ pub fn run_version(argv: &[&str]) -> Option<String> {
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
-                break;
+                // A killed program can leave a grandchild holding its output pipe open, and
+                // waiting for the pipe to close would hang here. Whatever it printed is not a
+                // version we can trust anyway, so the readers are left to finish on their own.
+                return None;
             }
         }
     }
@@ -179,8 +187,13 @@ pub fn run_version(argv: &[&str]) -> Option<String> {
 /// Runs every detector. Programs that are not installed are skipped silently; the second value
 /// is how many detectors found a program, so a report can say what was looked at.
 pub fn detect_all() -> (Vec<Input>, usize) {
+    detect_with(DETECTORS)
+}
+
+/// [`detect_all`] over an explicit list of detectors.
+fn detect_with(detectors: &[Detector]) -> (Vec<Input>, usize) {
     let mut found: Vec<Input> = Vec::new();
-    for d in DETECTORS {
+    for d in detectors {
         if let Some(version) = run_version(d.argv) {
             let source = format!("detected: {}", d.argv.join(" "));
             // The same product on the same version from two binaries is one fact.
@@ -276,6 +289,8 @@ mod tests {
         assert_eq!(run_version(&[]), None);
     }
 
+    // Stands in for a real program with `sh`, which Windows does not have.
+    #[cfg(unix)]
     #[test]
     fn a_real_program_is_read_from_stdout_and_stderr() {
         // `sh -c` is only used by the test to stand in for a program that prints a version.
@@ -287,6 +302,54 @@ mod tests {
             run_version(&["sh", "-c", "echo 'tool 4.5.6' >&2"]).as_deref(),
             Some("4.5.6")
         );
+    }
+
+    // Stands in for a real program with `sh`, which Windows does not have.
+    #[cfg(unix)]
+    #[test]
+    fn a_program_that_outlives_its_time_limit_is_killed_and_ignored() {
+        let started = Instant::now();
+        let got = run_version_within(
+            &["sh", "-c", "echo 'tool 9.9.9'; exec sleep 30"],
+            Duration::from_millis(300),
+        );
+        assert_eq!(got, None, "a program that never finishes gives no version");
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the limit must actually end the wait"
+        );
+    }
+
+    // Stands in for a real program with `sh`, which Windows does not have.
+    #[cfg(unix)]
+    #[test]
+    fn detection_reports_each_product_and_version_once() {
+        let det = |product, script: &'static [&'static str]| Detector {
+            product,
+            argv: script,
+        };
+        let found = detect_with(&[
+            det("php", &["sh", "-c", "echo 'PHP 7.4.33 (cli)'"]),
+            det("php", &["sh", "-c", "echo 'PHP 7.4.33 (fpm)'"]),
+            det("php", &["sh", "-c", "echo 'PHP 8.2.1 (fpm)'"]),
+            det("nginx", &["sh", "-c", "echo 'nginx/1.24.0' >&2"]),
+            det("ghost", &["opencraysec-no-such-binary-xyz", "-v"]),
+            det("silent", &["sh", "-c", "echo 'no digits'"]),
+        ]);
+        let got: Vec<(&str, &str)> = found
+            .0
+            .iter()
+            .map(|i| (i.product.as_str(), i.version.as_str()))
+            .collect();
+        assert_eq!(
+            got,
+            vec![("php", "7.4.33"), ("php", "8.2.1"), ("nginx", "1.24.0")],
+            "one fact per product and version; missing programs and silent ones are skipped"
+        );
+        assert_eq!(found.1, 3);
+        assert_eq!(found.0[0].source, "detected: sh -c echo 'PHP 7.4.33 (cli)'");
+        // The real table runs without trouble on whatever machine this is.
+        let _ = detect_all();
     }
 
     #[test]

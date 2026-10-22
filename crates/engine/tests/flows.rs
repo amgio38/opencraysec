@@ -613,6 +613,89 @@ fn an_sbom_scans_like_the_lockfile_it_came_from_and_is_only_read_when_named() {
 }
 
 #[test]
+fn runtime_scan_without_products_detects_and_says_what_it_looked_at() {
+    use opencraysec_engine::{RuntimeOptions, scan_runtime};
+
+    // Which programs exist depends on the machine, so only the shape is asserted.
+    let dir = tempfile::tempdir().expect("tmp");
+    let r = scan_runtime(&store_with(dir.path(), None), &RuntimeOptions::default()).expect("scans");
+    assert!(
+        r.notes
+            .iter()
+            .any(|n| n.starts_with("Looked for ") && n.contains("known programs on PATH")),
+        "{:?}",
+        r.notes
+    );
+    assert!(
+        r.notes.iter().any(|n| n.contains("opencraysec update")),
+        "no release data is stored here"
+    );
+    assert!(
+        r.results.iter().all(|x| x.source.starts_with("detected: ")),
+        "every result says how its version was found"
+    );
+}
+
+#[test]
+fn runtime_scan_with_nvd_caps_lookups_and_reports_failures_per_product() {
+    use opencraysec_db::runtime_data::update_runtime;
+    use opencraysec_engine::{RuntimeOptions, scan_runtime};
+
+    // NVD answers nothing for these versions (the mock has no route, so each lookup fails).
+    let server = MockServer::start(vec![
+        Route::get(
+            "/eol",
+            r#"{"result":[{"name":"php","identifiers":[{"type":"cpe","id":"cpe:2.3:a:php:php"}],
+                "releases":[{"name":"8.4","eolFrom":"2028-12-31","isEol":false,"latest":{"name":"8.4.27"}}]}]}"#,
+        ),
+        Route::get("/php", r#"{"8":{"8.4":{"version":"8.4.27"}}}"#),
+    ]);
+    let dir = tempfile::tempdir().expect("tmp");
+    let store = store_with(dir.path(), Some(&server));
+    update_runtime(&store).expect("update");
+    let products: Vec<String> = (1..=12).map(|n| format!("php@8.4.{n}")).collect();
+    let opts = RuntimeOptions {
+        products,
+        nvd: true,
+    };
+    let r = scan_runtime(&store, &opts).expect("scans");
+
+    let errors: Vec<&str> = r
+        .results
+        .iter()
+        .map(|x| {
+            x.nvd
+                .as_ref()
+                .and_then(|n| n.error.as_deref())
+                .unwrap_or("")
+        })
+        .collect();
+    assert!(
+        errors[..10].iter().all(|e| e.contains("NVD lookup failed")),
+        "{errors:?}"
+    );
+    assert!(
+        errors[10..]
+            .iter()
+            .all(|e| e.contains("at most 10 NVD lookups")),
+        "{errors:?}"
+    );
+    assert!(
+        r.notes
+            .iter()
+            .any(|n| n.contains("2 product(s) were not looked up")),
+        "{:?}",
+        r.notes
+    );
+    let asked = server
+        .requests()
+        .iter()
+        .filter(|q| q.contains("cpeName"))
+        .count();
+    assert_eq!(asked, 10, "the cap holds");
+}
+
+#[test]
 fn runtime_scan_with_nvd_lists_the_cves_for_that_version_and_caches_them() {
     use opencraysec_db::runtime_data::update_runtime;
     use opencraysec_engine::{RuntimeOptions, scan_runtime};
