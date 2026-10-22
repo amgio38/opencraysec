@@ -31,7 +31,9 @@ lockfiles record it:
 | --- | --- |
 | `package-lock.json` (lockfileVersion 2 and 3) | Listed: the entry says `hasInstallScript`. |
 | `package-lock.json` (lockfileVersion 1) | **Cannot be told.** Its entries carry no install-script marker; regenerate it with a current npm. |
-| `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `composer.lock`, `go.mod`, the Python lockfiles, an SBOM | **Cannot be told.** This scan does not read it from these formats, and it does not guess. `Cargo.lock` in particular does not say which crates have a `build.rs` or are procedural macros. |
+| `pnpm-lock.yaml` (lockfileVersion 5 and 6) | Listed: the entry says `requiresBuild: true`. |
+| `pnpm-lock.yaml` (lockfileVersion 9 and later) | **Cannot be told.** pnpm's published lockfile types (`@pnpm/lockfile-types`) declare `requiresBuild` up to version 5.1.1 (2023) and no longer from version 6.0.0 (April 2024, the week before pnpm 9, which introduced lockfileVersion 9), so a missing marker means nothing. A file with no version line is treated the same way. |
+| `yarn.lock`, `Cargo.lock`, `composer.lock`, `go.mod`, the Python lockfiles, an SBOM | **Cannot be told.** This scan does not read it from these formats, and it does not guess. `Cargo.lock` in particular does not say which crates have a `build.rs` or are procedural macros. |
 
 A lockfile that cannot say is named in the report; its packages are not "free of install scripts", they
 are unknown. "None" is only claimed for lockfiles that do record it. The same list appears in

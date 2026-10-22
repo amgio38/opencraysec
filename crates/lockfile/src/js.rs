@@ -125,36 +125,98 @@ pub fn yarn_lock(text: &str, source: &str) -> Vec<Package> {
         .collect()
 }
 
+/// What a `pnpm-lock.yaml` yields.
+pub struct PnpmLock {
+    /// Every registry package in the `packages:` section.
+    pub packages: Vec<Package>,
+    /// The packages whose entry says `requiresBuild: true`, so an install step runs code. `None`
+    /// when the file cannot say: pnpm's lockfile types declared `requiresBuild` up to lockfile
+    /// version 6 and no longer declare it from version 9 on, so a newer file (or one with no version
+    /// line) has no marker whose absence would mean anything.
+    pub install_scripts: Option<Vec<Package>>,
+}
+
+/// The major part of the `lockfileVersion:` line (`5.4`, `'6.0'`, `'9.0'`), if the file has one.
+fn pnpm_lockfile_major(text: &str) -> Option<u32> {
+    text.lines()
+        .take(5)
+        .find_map(|l| l.strip_prefix("lockfileVersion:"))
+        .and_then(|v| unquote(v.trim()).split('.').next()?.parse().ok())
+}
+
 /// `pnpm-lock.yaml`: keys of the `packages:` section (lockfile v5 to v9).
 pub fn pnpm_lock(text: &str, source: &str) -> Vec<Package> {
+    pnpm_lock_full(text, source).packages
+}
+
+/// Like [`pnpm_lock`], and also the packages that run a build step when installed (lockfile versions
+/// 5 and 6, whose entries carry `requiresBuild`).
+pub fn pnpm_lock_full(text: &str, source: &str) -> PnpmLock {
+    let major = pnpm_lockfile_major(text);
+    let readable = major.is_some_and(|m| m <= 8);
     let mut seen = BTreeSet::new();
+    let mut builds = BTreeSet::new();
+    let mut current: Option<(String, String)> = None;
     let mut in_packages = false;
     for line in text.lines() {
         if !line.starts_with(' ') && !line.trim().is_empty() {
             in_packages = line.trim_end() == "packages:";
+            current = None;
             continue;
         }
-        if !in_packages || !line.starts_with("  ") || line.starts_with("   ") {
+        if !in_packages {
             continue;
         }
+        if line.starts_with("    ") && !line.starts_with("     ") {
+            if line.trim() == "requiresBuild: true"
+                && let Some(entry) = &current
+            {
+                builds.insert(entry.clone());
+            }
+            continue;
+        }
+        if !line.starts_with("  ") || line.starts_with("   ") {
+            continue;
+        }
+        current = None;
         let Some(key) = line.trim().strip_suffix(':') else {
             continue;
         };
         let key = unquote(key).trim_start_matches('/');
         let key = key.split('(').next().unwrap_or(key);
-        let parsed = match key.rfind('@').filter(|i| *i > 0) {
-            Some(i) => Some((&key[..i], &key[i + 1..])),
-            None => key.rsplit_once('/'),
+        let parsed = if major.is_some_and(|m| m <= 5) {
+            // Lockfile v5 keys are paths, `name/version`, with a peer suffix after an underscore
+            // (`react-dom/18.2.0_react@18.2.0`) that may itself hold an `@`.
+            let segments: Vec<&str> = key.split('/').collect();
+            let name_len = if key.starts_with('@') { 2 } else { 1 };
+            (segments.len() > name_len).then(|| {
+                let at = key.len() - segments[name_len..].join("/").len();
+                (&key[..at.saturating_sub(1)], segments[name_len])
+            })
+        } else {
+            match key.rfind('@').filter(|i| *i > 0) {
+                Some(i) => Some((&key[..i], &key[i + 1..])),
+                None => key.rsplit_once('/'),
+            }
         };
         if let Some((name, version)) = parsed
             && version.starts_with(|c: char| c.is_ascii_digit())
         {
-            seen.insert((name.to_string(), version.to_string()));
+            let version = version.split('_').next().unwrap_or(version);
+            let entry = (name.to_string(), version.to_string());
+            seen.insert(entry.clone());
+            current = Some(entry);
         }
     }
-    seen.into_iter()
-        .map(|(n, v)| npm(&n, &v, source, false))
-        .collect()
+    let to_packages = |set: BTreeSet<(String, String)>| -> Vec<Package> {
+        set.into_iter()
+            .map(|(n, v)| npm(&n, &v, source, false))
+            .collect()
+    };
+    PnpmLock {
+        packages: to_packages(seen),
+        install_scripts: readable.then(|| to_packages(builds)),
+    }
 }
 
 #[cfg(test)]
@@ -236,5 +298,92 @@ mod tests {
         let l = package_lock_full(v3_none, "p").expect("parses");
         assert_eq!(l.install_scripts, Some(vec![]));
         assert!(package_lock_full("not json", "p").is_err());
+    }
+
+    const PNPM_V5: &str = "lockfileVersion: 5.4\n\nspecifiers:\n  native: 1.2.3\n\npackages:\n\n  /native/1.2.3:\n    resolution: {integrity: a}\n    requiresBuild: true\n    dev: false\n\n  /@scope/gyp/2.0.0_react@18.2.0:\n    resolution: {integrity: b}\n    dev: false\n    requiresBuild: true\n\n  /quiet/3.0.0:\n    resolution: {integrity: c}\n    dev: false\n\n  /explicit-no/4.0.0:\n    resolution: {integrity: d}\n    requiresBuild: false\n    dev: false\n\n  /react-dom/18.2.0_react@18.2.0:\n    resolution: {integrity: e}\n    dev: false\n";
+    const PNPM_V6: &str = "lockfileVersion: '6.0'\n\npackages:\n\n  /native@1.2.3:\n    resolution: {integrity: a}\n    requiresBuild: true\n    dev: false\n\n  /@scope/gyp@2.0.0(react@18.2.0):\n    resolution: {integrity: b}\n    requiresBuild: true\n    dev: false\n\n  /quiet@3.0.0:\n    resolution: {integrity: c}\n    dev: false\n\n  /explicit-no@4.0.0:\n    requiresBuild: false\n    dev: false\n";
+    const PNPM_V9: &str = "lockfileVersion: '9.0'\n\nimporters:\n  .:\n    dependencies:\n      native:\n        specifier: 1.2.3\n        version: 1.2.3\n\npackages:\n\n  native@1.2.3:\n    resolution: {integrity: a}\n    requiresBuild: true\n\n  quiet@3.0.0:\n    resolution: {integrity: c}\n\nsnapshots:\n\n  native@1.2.3: {}\n\n  quiet@3.0.0: {}\n";
+
+    fn pnpm_names(l: &PnpmLock) -> Vec<(&str, &str)> {
+        l.packages
+            .iter()
+            .map(|p| (p.name.as_str(), p.version.as_str()))
+            .collect()
+    }
+
+    fn pnpm_builds(l: &PnpmLock) -> Option<Vec<(&str, &str)>> {
+        l.install_scripts.as_ref().map(|v| {
+            v.iter()
+                .map(|p| (p.name.as_str(), p.version.as_str()))
+                .collect()
+        })
+    }
+
+    #[test]
+    fn pnpm_lockfile_v5_names_the_packages_that_require_a_build() {
+        let l = pnpm_lock_full(PNPM_V5, "pnpm-lock.yaml");
+        assert_eq!(
+            pnpm_names(&l),
+            vec![
+                ("@scope/gyp", "2.0.0"),
+                ("explicit-no", "4.0.0"),
+                ("native", "1.2.3"),
+                ("quiet", "3.0.0"),
+                ("react-dom", "18.2.0")
+            ],
+            "a peer suffix after the underscore is not part of the version, and its @ is not the separator"
+        );
+        assert_eq!(
+            pnpm_builds(&l),
+            Some(vec![("@scope/gyp", "2.0.0"), ("native", "1.2.3")]),
+            "requiresBuild: false and no marker are not builds"
+        );
+    }
+
+    #[test]
+    fn pnpm_lockfile_v6_names_the_packages_that_require_a_build() {
+        let l = pnpm_lock_full(PNPM_V6, "pnpm-lock.yaml");
+        assert_eq!(
+            pnpm_names(&l),
+            vec![
+                ("@scope/gyp", "2.0.0"),
+                ("explicit-no", "4.0.0"),
+                ("native", "1.2.3"),
+                ("quiet", "3.0.0")
+            ]
+        );
+        assert_eq!(
+            pnpm_builds(&l),
+            Some(vec![("@scope/gyp", "2.0.0"), ("native", "1.2.3")])
+        );
+    }
+
+    #[test]
+    fn pnpm_lockfile_v9_cannot_say_even_if_a_requires_build_line_is_there() {
+        // pnpm's own lockfile types stopped declaring requiresBuild with version 9, so a missing
+        // marker proves nothing and a stray one is not a list that can be trusted to be complete.
+        let l = pnpm_lock_full(PNPM_V9, "pnpm-lock.yaml");
+        assert_eq!(
+            pnpm_names(&l),
+            vec![("native", "1.2.3"), ("quiet", "3.0.0")]
+        );
+        assert_eq!(pnpm_builds(&l), None);
+        let none = "packages:\n  /native/1.2.3:\n    requiresBuild: true\n";
+        let l = pnpm_lock_full(none, "x");
+        assert_eq!(pnpm_names(&l), vec![("native", "1.2.3")]);
+        assert_eq!(pnpm_builds(&l), None, "no version line: unknown");
+        assert_eq!(pnpm_lockfile_major("lockfileVersion: 'x'\n"), None);
+        assert_eq!(pnpm_lockfile_major("lockfileVersion: 5.4\n"), Some(5));
+        assert_eq!(pnpm_lockfile_major("\nlockfileVersion: \"6.1\"\n"), Some(6));
+    }
+
+    #[test]
+    fn a_requires_build_line_belongs_to_the_entry_above_it_and_only_in_packages() {
+        let t = "lockfileVersion: '6.0'\n\nimporters:\n  .:\n    dependencies:\n      a:\n        version: 1.0.0\n    requiresBuild: true\n\npackages:\n\n  /a@1.0.0:\n    resolution: {integrity: x}\n\n  /b@2.0.0:\n    resolution: {integrity: y}\n    requiresBuild: true\n\n  /c@3.0.0:\n    resolution: {integrity: z}\n\nsnapshots:\n  /d@4.0.0:\n    requiresBuild: true\n";
+        let l = pnpm_lock_full(t, "x");
+        assert_eq!(pnpm_builds(&l), Some(vec![("b", "2.0.0")]));
+        // An indented line deeper than an entry's own properties is not a marker.
+        let deep = "lockfileVersion: '6.0'\npackages:\n  /a@1.0.0:\n    resolution:\n      requiresBuild: true\n";
+        assert_eq!(pnpm_builds(&pnpm_lock_full(deep, "x")), Some(vec![]));
     }
 }

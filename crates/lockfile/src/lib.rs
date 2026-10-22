@@ -95,6 +95,9 @@ fn install_scripts_reason(kind: &str) -> &'static str {
             "this package-lock.json is lockfileVersion 1, whose entries carry no install-script marker; regenerate it with a current npm"
         }
         "sbom" => "this scan cannot tell from an SBOM which components run code when installed",
+        "pnpm" => {
+            "this pnpm-lock.yaml is lockfileVersion 9 or later (or has no version line); only lockfileVersion 5 and 6 record requiresBuild, so its absence says nothing"
+        }
         _ => {
             "this scan cannot tell from this lockfile format which packages run code when installed"
         }
@@ -231,6 +234,10 @@ pub fn discover(root: &Path, only: Option<&[Ecosystem]>) -> Discovery {
                 scripts = l.install_scripts;
                 l.packages
             })
+        } else if kind == "pnpm" {
+            let l = js::pnpm_lock_full(&text, &rel);
+            scripts = l.install_scripts;
+            Ok(l.packages)
         } else if kind == "workflow" {
             let w = workflow::parse(&text, &rel);
             if let Some(note) = workflow::unmatched_note(&w.unmatched) {
@@ -645,5 +652,58 @@ mod tests {
             ecosystem_of_kind("workflow"),
             Some(Ecosystem::GitHubActions)
         );
+    }
+
+    #[test]
+    fn a_pnpm_lockfile_says_which_packages_build_only_in_the_versions_that_record_it() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let r = dir.path();
+        write(
+            r,
+            "old/pnpm-lock.yaml",
+            "lockfileVersion: '6.0'\n\npackages:\n\n  /native@1.2.3:\n    resolution: {integrity: a}\n    requiresBuild: true\n    dev: false\n\n  /quiet@3.0.0:\n    resolution: {integrity: b}\n    dev: false\n",
+        );
+        write(
+            r,
+            "new/pnpm-lock.yaml",
+            "lockfileVersion: '9.0'\n\npackages:\n\n  native@1.2.3:\n    resolution: {integrity: a}\n\nsnapshots:\n\n  native@1.2.3: {}\n",
+        );
+        write(r, "yarn/yarn.lock", "a@^1:\n  version \"1.0.0\"\n");
+        let d = discover(r, None);
+        let scripts: Vec<(&str, &str)> = d
+            .install_scripts
+            .iter()
+            .map(|p| (p.name.as_str(), p.source.as_str()))
+            .collect();
+        assert_eq!(scripts, vec![("native", "old/pnpm-lock.yaml")]);
+        assert_eq!(d.install_scripts_checked, vec!["old/pnpm-lock.yaml"]);
+        let gaps: Vec<&str> = d
+            .install_scripts_unknown
+            .iter()
+            .map(|g| g.file.as_str())
+            .collect();
+        assert_eq!(gaps, vec!["new/pnpm-lock.yaml", "yarn/yarn.lock"]);
+        let why = |f: &str| {
+            d.install_scripts_unknown
+                .iter()
+                .find(|g| g.file == f)
+                .map(|g| g.reason.clone())
+                .expect("gap")
+        };
+        assert!(
+            why("new/pnpm-lock.yaml").contains("lockfileVersion 9 or later"),
+            "{}",
+            why("new/pnpm-lock.yaml")
+        );
+        assert!(
+            why("new/pnpm-lock.yaml").contains("only lockfileVersion 5 and 6 record requiresBuild")
+        );
+        assert!(
+            why("yarn/yarn.lock").contains("this lockfile format"),
+            "yarn keeps the generic reason"
+        );
+        for g in &d.install_scripts_unknown {
+            assert_eq!(g.ecosystem, Some(Ecosystem::Npm));
+        }
     }
 }

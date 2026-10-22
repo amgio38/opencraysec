@@ -51,13 +51,16 @@ The release workflow refuses a tag whose version has no `## [version]` section.
   the activity log (kind `scan_agent_config`). See `docs/AGENT-CONFIG.md`.
 - A malicious package started by an MCP server counts in the dashboard's "Malicious packages" number.
 - Install-time code. `scan` lists the packages whose lockfile entry says an install step runs code (npm
-  `hasInstallScript`, lockfileVersion 2 and 3) apart from the vulnerabilities: in the text report, as
+  `hasInstallScript`, lockfileVersion 2 and 3; pnpm `requiresBuild`, lockfileVersion 5 and 6) apart from
+  the vulnerabilities: in the text report, as
   `install_scripts` in JSON and MCP, in SARIF run properties, as a property on each CycloneDX component,
   and in the dashboard and the HTML export (a number and a table). It is not a vulnerability and never
   changes `--fail-on`; a malicious package that also runs an install script says so.
-- A lockfile that cannot say (npm lockfileVersion 1, yarn, pnpm, Cargo, Composer, Go, the Python
-  lockfiles, an SBOM) is named as such in every format, and "none" is only claimed for lockfiles that do
-  record it.
+- A lockfile that cannot say (npm lockfileVersion 1, pnpm lockfileVersion 9 and later, yarn, Cargo,
+  Composer, Go, the Python lockfiles, an SBOM) is named as such in every format, and "none" is only
+  claimed for lockfiles that do record it. pnpm stopped writing `requiresBuild` with lockfileVersion 9.
+- `pnpm-lock.yaml` lockfileVersion 5 keys with a peer suffix (`/react-dom/18.2.0_react@18.2.0`) were read
+  with the wrong package name; they are now read as `react-dom` 18.2.0.
 - Malicious packages. An OSV `MAL-` report (OpenSSF Malicious Packages) is now a finding of its own kind:
   `malicious: true`, severity `critical`, listed before every other finding, and marked `MALICIOUS` in the
   text report, SARIF (rule properties and tags) and CycloneDX (rating method `other`, a property and a
