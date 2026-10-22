@@ -55,15 +55,22 @@ your machine.
 ## See it in action
 
 <p align="center">
-  <img src="docs/media/dashboard-overview.png" alt="The opencraysec report: counts of open, critical, exploited and used-by-your-code findings, severity over time, the riskiest packages and whether the code uses them" width="820">
+  <img src="docs/media/dashboard-overview.png" alt="The opencraysec report: counts of open, critical, malicious, exploited and used-by-your-code findings, packages that run code at install, assistant configuration and code issues, runtime products to review, severity over time, the riskiest packages and whether the code uses them" width="820">
 </p>
 
 <p align="center">
-  <img src="docs/media/dashboard-fixes.png" alt="What was changed, and why: each fix with the assistant's reason, the measured lockfile change, the commands, the commit and the advisories with their references" width="820">
+  <img src="docs/media/dashboard-fixes.png" alt="What was changed, and why: each fix with the assistant's reason, the measured lockfile change, the commands and the advisories with their references, and the vulnerabilities a re-scan confirmed gone" width="820">
 </p>
 
-> Both images come from a scratch project (`/tmp/shop-api`) with real advisory data; no customer data
-> or personal paths are shown.
+<p align="center">
+  <img src="docs/media/dashboard-ai.png" alt="The AI assistant configuration panel (rule files, MCP server settings, hooks, tasks and skills, each finding with its CWE and what to do) and the suspected code issues for code that calls an AI model" width="820">
+</p>
+
+> The images come from a scratch project (`/tmp/shop-api`) written for the demonstration, with real
+> advisory data: the findings and numbers are what opencraysec reported. One package in it is a real
+> entry from the public malicious-package data. The fix history was recorded by a script standing in for
+> an assistant: it edited the lockfile and then ran `record-fix` and `verify-fix`, which is why the
+> client is shown as `cli`. No customer data or personal paths are shown.
 
 ## Install in 30 seconds
 
