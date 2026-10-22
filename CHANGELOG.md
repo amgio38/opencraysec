@@ -5,6 +5,8 @@ The release workflow refuses a tag whose version has no `## [version]` section.
 
 ## [Unreleased]
 
+## [0.20261022.4] - 2026-10-22
+
 ### Fixed
 
 - `scan-code` named a file with the platform's own separator, so on Windows a finding in a workflow was
