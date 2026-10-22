@@ -47,9 +47,13 @@ pub struct Unfixable {
     pub version: String,
     /// Advisory id.
     pub finding: String,
-    /// True for a malicious package: it is removed, not upgraded.
+    /// True for a malicious package: it is removed, never upgraded.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub malicious: bool,
+    /// For a malicious package, the releases its advisory does not list. They are information, not a
+    /// fix: moving to one does not undo what the affected release already ran.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub clean_releases: Vec<String>,
 }
 
 /// The plan for a set of findings.
@@ -164,6 +168,20 @@ pub fn plan_fix(findings: &[Finding], only: Option<&str>) -> FixPlan {
     let mut steps = Vec::new();
     let mut unfixable = Vec::new();
     for ((eco, name, version), fs) in groups {
+        // A malicious package is removed, never upgraded: no step, whatever the advisory lists as
+        // clean. Its other advisories end when it is removed or replaced.
+        if fs.iter().any(|f| f.malicious) {
+            for f in fs.iter().filter(|f| f.malicious) {
+                unfixable.push(Unfixable {
+                    package: name.clone(),
+                    version: version.clone(),
+                    finding: f.id.clone(),
+                    malicious: true,
+                    clean_releases: f.fixed_in.clone(),
+                });
+            }
+            continue;
+        }
         let mut target: Option<&str> = None;
         let mut resolved = Vec::new();
         for f in &fs {
@@ -178,7 +196,8 @@ pub fn plan_fix(findings: &[Finding], only: Option<&str>) -> FixPlan {
                     package: name.clone(),
                     version: version.clone(),
                     finding: f.id.clone(),
-                    malicious: f.malicious,
+                    malicious: false,
+                    clean_releases: Vec::new(),
                 }),
             }
         }
@@ -206,7 +225,7 @@ pub fn plan_fix(findings: &[Finding], only: Option<&str>) -> FixPlan {
     ];
     if findings.iter().any(|f| f.malicious) {
         caveats.push(
-            "A malicious package is not fixed by an upgrade. Remove it (or move to a version the advisory does not list), check whether its install scripts already ran on this machine or in CI, and rotate any secret those could reach.".into(),
+            "A malicious package is removed, not upgraded, so it has no step. Remove it or replace it with something you have reviewed, check whether its install scripts already ran on this machine or in CI, and rotate any secret those could reach. Moving to a release its advisory does not list does not undo what the affected one already ran.".into(),
         );
     }
     FixPlan {
@@ -330,25 +349,54 @@ mod tests {
         bad.malicious = true;
         let plan = plan_fix(&[bad, finding("A", "lodash", "4.17.4", &["4.17.21"])], None);
         assert_eq!(plan.steps.len(), 1, "only lodash gets an upgrade command");
+        assert_eq!(plan.steps[0].package, "lodash");
         assert_eq!(plan.unfixable.len(), 1);
-        assert!(plan.unfixable[0].malicious);
+        assert!(plan.unfixable[0].malicious && plan.unfixable[0].clean_releases.is_empty());
         assert!(
             plan.caveats
                 .iter()
-                .any(|c| c.contains("malicious package is not fixed by an upgrade"))
+                .any(|c| c.contains("malicious package is removed, not upgraded"))
         );
         let json = serde_json::to_value(&plan).expect("json");
         assert_eq!(json["unfixable"][0]["malicious"], true);
+        assert!(json["unfixable"][0].get("clean_releases").is_none());
     }
 
     #[test]
-    fn a_compromised_release_with_a_clean_version_still_gets_the_warning() {
-        let mut bad = finding("MAL-2026-8", "popular-lib", "2.0.1", &["2.0.2"]);
+    fn a_compromised_release_of_an_honest_package_gets_no_upgrade_step_either() {
+        // An honest package with one release taken over: the advisory names a later clean one.
+        let mut bad = finding("GHSA-x", "popular-lib", "2.0.1", &["2.0.2"]);
         bad.malicious = true;
-        let plan = plan_fix(&[bad], None);
-        assert_eq!(plan.steps.len(), 1);
-        assert_eq!(plan.steps[0].to, "2.0.2");
-        assert!(plan.caveats.iter().any(|c| c.contains("malicious")));
+        bad.aliases = vec!["MAL-2026-8".into()];
+        // The same release also has an ordinary advisory; it ends when the package is removed.
+        let ordinary = finding("GHSA-y", "popular-lib", "2.0.1", &["2.0.5"]);
+        for fs in [
+            vec![bad.clone()],
+            vec![bad.clone(), ordinary.clone()],
+            vec![ordinary, bad],
+        ] {
+            let plan = plan_fix(&fs, None);
+            assert!(plan.steps.is_empty(), "no upgrade step: {:?}", plan.steps);
+            assert_eq!(plan.unfixable.len(), 1);
+            let u = &plan.unfixable[0];
+            assert_eq!((u.finding.as_str(), u.malicious), ("GHSA-x", true));
+            assert_eq!(u.clean_releases, vec!["2.0.2"], "named as information");
+            assert!(plan.caveats.iter().any(|c| c.contains("does not undo")));
+        }
+        let json = serde_json::to_value(plan_fix(&[bad_of("2.0.1")], None)).expect("json");
+        assert_eq!(json["unfixable"][0]["clean_releases"][0], "2.0.2");
+        // Selecting the package by name does not bring the upgrade back.
+        assert!(
+            plan_fix(&[bad_of("2.0.1")], Some("popular-lib"))
+                .steps
+                .is_empty()
+        );
+    }
+
+    fn bad_of(version: &str) -> Finding {
+        let mut f = finding("MAL-2026-8", "popular-lib", version, &["2.0.2"]);
+        f.malicious = true;
+        f
     }
 
     #[test]

@@ -73,8 +73,9 @@ matched text is never returned, and `snippet` is always empty. The call is recor
 ## plan_fix
 
 Scans, then returns the minimal upgrade steps: `steps` (`package`, `from`, `to`, `bump`, `findings`,
-`lockfile`, `commands`, `needs_confirmation`, `note`), `unfixable` (findings with no published fix),
-`caveats`, `notes` and `after_you_apply_it`. Extra argument: `id` limits the plan to one advisory id or
+`lockfile`, `commands`, `needs_confirmation`, `note`), `unfixable` (findings with no published fix, and
+every malicious package, which is removed and never upgraded; it carries `malicious: true` and, when its
+advisory names a release it does not list, `clean_releases` as information), `caveats`, `notes` and `after_you_apply_it`. Extra argument: `id` limits the plan to one advisory id or
 package. **Nothing is modified.** Ask the user before steps with `needs_confirmation: true`.
 
 ## verify_fix

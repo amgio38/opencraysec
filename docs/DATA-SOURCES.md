@@ -67,10 +67,12 @@ dumps `update` already downloads, so there is no separate feed and no setting to
   before everything else, including exploited vulnerabilities.
 - Its usage evidence is not assessed. A package that your code never imports can still have run its
   install step on the machine or in CI, so "not imported" would only mislead.
-- Upgrading is not the answer. `plan_fix` lists a package with no clean version under `unfixable` and
-  says to remove it, check whether its install scripts already ran, and rotate any secret that machine
-  could reach. When the report names only some releases of a package (a compromised release of an
-  honest package), the clean version is offered as usual, with the same warning.
+- Upgrading is never the answer. `plan_fix` gives a malicious package no step: it is listed under
+  `unfixable`, and every report format says to remove it, check whether its install scripts already ran,
+  and rotate any secret that machine could reach. This also holds when the report names only some
+  releases of a package (an honest package with one release taken over). The release the advisory does
+  not list is shown as information (`clean_releases`, and in the `fix:` line), not as a fix: moving to it
+  does not undo what the affected release already ran.
 - Coverage differs a lot by registry. On 2026-10-21 the dumps held about 222,000 reports for npm,
   12,000 for PyPI, and a few dozen or fewer for crates.io, Go and Packagist. A low count
   reflects what has been reported, so do not read a quiet result as proof that a registry is free of

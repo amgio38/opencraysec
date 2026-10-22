@@ -29,7 +29,7 @@ use serde_json::Value;
 
 use crate::EngineError;
 use crate::code::{CodeFinding, CodeReport, IGNORE_MARKER, lang_for, scan_text};
-use crate::report::REMOVE_ADVICE;
+use crate::report::malicious_advice;
 use crate::scan::{ScanOptions, scan_discovered};
 
 const SKIP_DIRS: &[&str] = &[
@@ -1286,7 +1286,7 @@ fn finish(
                 snippet: String::new(),
                 confidence: "advisory".into(),
                 advice: if f.malicious {
-                    REMOVE_ADVICE.into()
+                    malicious_advice(&f.fixed_in)
                 } else if let Some(v) = f.fixed_in.first() {
                     format!(
                         "Pin {} to {v} or later.",
@@ -1792,7 +1792,7 @@ mod tests {
             "{}",
             f.title
         );
-        assert_eq!(f.advice, REMOVE_ADVICE);
+        assert_eq!(f.advice, crate::report::REMOVE_ADVICE);
         assert!(r.unchecked.is_empty());
     }
 

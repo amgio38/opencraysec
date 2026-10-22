@@ -63,10 +63,12 @@ The release workflow refuses a tag whose version has no `## [version]` section.
   text report, SARIF (rule properties and tags) and CycloneDX (rating method `other`, a property and a
   recommendation). The data was already in the downloaded dumps, where such a package used to appear
   as an `unknown` finding that sank below the rest when your code did not import it.
-- Usage evidence is not assessed for a malicious package, so it can never be demoted. `plan_fix` lists
-  one that has no clean version as `unfixable` with `malicious: true` and a caveat to remove it, check
-  whether its install scripts already ran and rotate secrets; a compromised release of an honest package
-  still gets its upgrade command, with the same caveat.
+- Usage evidence is not assessed for a malicious package, so it can never be demoted. A malicious package
+  is removed, never upgraded: `plan_fix` gives it no step and lists it as `unfixable` with
+  `malicious: true`, and the `fix:` line of every report format says to remove it, check whether its
+  install scripts already ran and rotate secrets. That holds for a compromised release of an honest
+  package too: a release the advisory does not list is shown as information (`clean_releases`), because
+  moving to it does not undo what the affected release already ran.
 - `update` counts the `MAL-` reports per ecosystem (`malicious` in the dataset metadata, `malicious_records`
   in `data_sources`). A dataset that holds none now says so in `notes` instead of looking clean.
 - The dashboard has a "Malicious packages" number and a `MALICIOUS` tag in the findings table; scan events

@@ -22,6 +22,19 @@ fn runs_install_script(r: &ScanReport, p: &Package) -> bool {
         .any(|s| s.ecosystem == p.ecosystem && s.name == p.name && s.version == p.version)
 }
 
+/// What to do about a malicious package. Upgrading is never the answer, even when the advisory
+/// names a release it does not list: that release does not undo what the affected one already ran.
+pub fn malicious_advice(fixed_in: &[String]) -> String {
+    if fixed_in.is_empty() {
+        REMOVE_ADVICE.to_string()
+    } else {
+        format!(
+            "{REMOVE_ADVICE}. A release the advisory does not list: {}. Moving to it does not undo what the affected release already ran",
+            fixed_in.join(" / ")
+        )
+    }
+}
+
 /// Percent-encodes the characters that are not allowed in a purl name segment.
 fn enc(s: &str) -> String {
     let mut out = String::new();
@@ -115,8 +128,8 @@ pub fn sarif(r: &ScanReport) -> Value {
         .findings
         .iter()
         .map(|f| {
-            let fix = if f.fixed_in.is_empty() && f.malicious {
-                REMOVE_ADVICE.to_string()
+            let fix = if f.malicious {
+                malicious_advice(&f.fixed_in)
             } else if f.fixed_in.is_empty() {
                 "no fixed version published".to_string()
             } else {
@@ -272,10 +285,10 @@ pub fn cyclonedx(r: &ScanReport) -> Value {
                 "description": f.summary,
                 "affects": [{ "ref": purl(&f.package) }],
             });
-            if let Some(fixed) = f.fixed_in.first() {
+            if f.malicious {
+                v["recommendation"] = json!(malicious_advice(&f.fixed_in));
+            } else if let Some(fixed) = f.fixed_in.first() {
                 v["recommendation"] = json!(format!("Upgrade to {fixed}"));
-            } else if f.malicious {
-                v["recommendation"] = json!(REMOVE_ADVICE);
             }
             if f.malicious {
                 v["properties"] = json!([{ "name": "opencraysec:malicious", "value": "true" }]);
@@ -401,8 +414,8 @@ pub fn text(r: &ScanReport) -> String {
         let _ = writeln!(
             s,
             "    fix: {}   ({})",
-            if f.fixed_in.is_empty() && f.malicious {
-                REMOVE_ADVICE.to_string()
+            if f.malicious {
+                malicious_advice(&f.fixed_in)
             } else if f.fixed_in.is_empty() {
                 "none published".to_string()
             } else {
@@ -819,6 +832,49 @@ mod tests {
         assert_eq!(
             cyclonedx(&a)["components"][0]["purl"],
             "pkg:github/github/codeql-action@3.25.0"
+        );
+    }
+
+    #[test]
+    fn a_malicious_release_with_a_clean_version_still_says_remove_in_every_format() {
+        let mut r = malicious_sample();
+        r.findings[0].fixed_in = vec!["4.4.3".into()];
+        let t = text(&r);
+        assert!(
+            t.contains("fix: remove it; check whether its install scripts already ran"),
+            "{t}"
+        );
+        assert!(
+            t.contains("A release the advisory does not list: 4.4.3"),
+            "{t}"
+        );
+        assert!(
+            !t.contains("fix: 4.4.3"),
+            "the version must not stand alone as the fix: {t}"
+        );
+        let msg = sarif(&r)["runs"][0]["results"][0]["message"]["text"]
+            .as_str()
+            .expect("text")
+            .to_string();
+        assert!(
+            msg.contains("remove it") && msg.contains("does not undo"),
+            "{msg}"
+        );
+        assert!(!msg.contains("fixed in 4.4.3"), "{msg}");
+        let rec = cyclonedx(&r)["vulnerabilities"][0]["recommendation"]
+            .as_str()
+            .expect("text")
+            .to_string();
+        assert!(
+            rec.starts_with("remove it") && !rec.starts_with("Upgrade"),
+            "{rec}"
+        );
+        assert_eq!(malicious_advice(&[]), REMOVE_ADVICE);
+        assert_eq!(
+            malicious_advice(&["1.0.1".into(), "1.1.0".into()]),
+            format!(
+                "{REMOVE_ADVICE}. A release the advisory does not list: 1.0.1 / 1.1.0. Moving to it does not undo what the affected release already ran"
+            )
         );
     }
 
