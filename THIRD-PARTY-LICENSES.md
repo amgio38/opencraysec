@@ -123,7 +123,7 @@ the others are development or build-time tools that are not distributed.
 | typed-path | 0.12.3 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/chipsenkbeil/typed-path> |
 | unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 | MIT AND Unicode-3.0 | yes | <https://github.com/dtolnay/unicode-ident> |
 | untrusted | 0.9.0 | ISC | ISC | yes | <https://github.com/briansmith/untrusted> |
-| ureq | 3.4.2 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/algesten/ureq> |
+| ureq | 3.5.0 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/algesten/ureq> |
 | ureq-proto | 0.6.5 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/algesten/ureq-proto> |
 | url | 2.5.8 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/servo/rust-url> |
 | utf8-zero | 0.8.1 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/algesten/utf8-zero> |
