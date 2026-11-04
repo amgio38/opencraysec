@@ -10,7 +10,7 @@ of this file and of those texts is installed next to the binary (`share/doc/open
 The same inventory in machine-readable form is [`licenses/deps.tsv`](licenses/deps.tsv); 
 `scripts/check-licenses.sh` fails when it disagrees with `Cargo.lock`.
 
-Every crate in `Cargo.lock` is listed, 125 in total. The last column says whether the crate is
+Every crate in `Cargo.lock` is listed, 131 in total. The last column says whether the crate is
 compiled into the binary (reachable through normal dependency edges from the workspace crates);
 the others are development or build-time tools that are not distributed.
 
@@ -23,7 +23,7 @@ the others are development or build-time tools that are not distributed.
 | BSD-3-Clause | 1 |
 | CDLA-Permissive-2.0 | 1 |
 | ISC | 2 |
-| MIT | 99 |
+| MIT | 105 |
 | MIT AND Unicode-3.0 | 1 |
 | Unicode-3.0 | 18 |
 | Zlib | 1 |
@@ -59,7 +59,7 @@ the others are development or build-time tools that are not distributed.
 | flate2 | 1.1.10 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/rust-lang/flate2-rs> |
 | form_urlencoded | 1.2.2 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/servo/rust-url> |
 | getrandom | 0.2.17 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/rust-random/getrandom> |
-| getrandom | 0.4.3 | MIT OR Apache-2.0 | MIT | no | <https://github.com/rust-random/getrandom> |
+| getrandom | 0.4.3 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/rust-random/getrandom> |
 | hashbrown | 0.17.1 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/rust-lang/hashbrown> |
 | heck | 0.5.0 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/withoutboats/heck> |
 | http | 1.5.0 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/hyperium/http> |
@@ -75,6 +75,7 @@ the others are development or build-time tools that are not distributed.
 | idna_adapter | 1.2.2 | Apache-2.0 OR MIT | MIT | yes | <https://github.com/hsivonen/idna_adapter> |
 | indexmap | 2.14.2 | Apache-2.0 OR MIT | MIT | yes | <https://github.com/indexmap-rs/indexmap> |
 | itoa | 1.0.18 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/dtolnay/itoa> |
+| js-sys | 0.3.107 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys> |
 | libc | 0.2.191 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/rust-lang/libc> |
 | linux-raw-sys | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | MIT | no | <https://github.com/sunfishcode/linux-raw-sys> |
 | litemap | 0.8.3 | Unicode-3.0 | Unicode-3.0 | yes | <https://github.com/unicode-org/icu4x> |
@@ -90,7 +91,7 @@ the others are development or build-time tools that are not distributed.
 | powerfmt | 0.2.1 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/jhpratt/powerfmt> |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/dtolnay/proc-macro2> |
 | quote | 1.0.47 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/dtolnay/quote> |
-| r-efi | 6.0.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later | MIT | no | <https://github.com/r-efi/r-efi> |
+| r-efi | 6.0.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later | MIT | yes | <https://github.com/r-efi/r-efi> |
 | regex | 1.13.1 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/rust-lang/regex> |
 | regex-automata | 0.4.18 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/rust-lang/regex> |
 | regex-syntax | 0.8.11 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/rust-lang/regex> |
@@ -99,6 +100,7 @@ the others are development or build-time tools that are not distributed.
 | rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT | MIT | yes | <https://github.com/rustls/rustls> |
 | rustls-pki-types | 1.15.1 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/rustls/pki-types> |
 | rustls-webpki | 0.103.16 | ISC | ISC | yes | <https://github.com/rustls/webpki> |
+| rustversion | 1.0.23 | MIT OR Apache-2.0 | MIT | no | <https://github.com/dtolnay/rustversion> |
 | serde | 1.0.229 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/serde-rs/serde> |
 | serde_core | 1.0.229 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/serde-rs/serde> |
 | serde_derive | 1.0.229 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/serde-rs/serde> |
@@ -120,7 +122,7 @@ the others are development or build-time tools that are not distributed.
 | toml_datetime | 1.1.2+spec-1.1.0 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/toml-rs/toml> |
 | toml_parser | 1.1.5+spec-1.1.0 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/toml-rs/toml> |
 | toml_writer | 1.1.3+spec-1.1.0 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/toml-rs/toml> |
-| typed-path | 0.12.3 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/chipsenkbeil/typed-path> |
+| typed-path | 0.13.0 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/chipsenkbeil/typed-path> |
 | unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 | MIT AND Unicode-3.0 | yes | <https://github.com/dtolnay/unicode-ident> |
 | untrusted | 0.9.0 | ISC | ISC | yes | <https://github.com/briansmith/untrusted> |
 | ureq | 3.5.0 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/algesten/ureq> |
@@ -130,10 +132,14 @@ the others are development or build-time tools that are not distributed.
 | utf8_iter | 1.0.4 | Apache-2.0 OR MIT | MIT | yes | <https://github.com/hsivonen/utf8_iter> |
 | version_check | 0.9.5 | MIT/Apache-2.0 | MIT | no | <https://github.com/SergioBenitez/version_check> |
 | wasi | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | MIT | yes | <https://github.com/bytecodealliance/wasi> |
+| wasm-bindgen | 0.2.130 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/wasm-bindgen/wasm-bindgen> |
+| wasm-bindgen-macro | 0.2.130 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro> |
+| wasm-bindgen-macro-support | 0.2.130 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/wasm-bindgen/wasm-bindgen/tree/main/crates/macro-support> |
+| wasm-bindgen-shared | 0.2.130 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared> |
 | webpki-roots | 1.0.10 | CDLA-Permissive-2.0 | CDLA-Permissive-2.0 | yes | <https://github.com/rustls/webpki-roots> |
-| windows-link | 0.2.1 | MIT OR Apache-2.0 | MIT | no | <https://github.com/microsoft/windows-rs> |
+| windows-link | 0.2.1 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/microsoft/windows-rs> |
 | windows-sys | 0.52.0 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/microsoft/windows-rs> |
-| windows-sys | 0.61.2 | MIT OR Apache-2.0 | MIT | no | <https://github.com/microsoft/windows-rs> |
+| windows-sys | 0.61.2 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/microsoft/windows-rs> |
 | windows-targets | 0.52.6 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/microsoft/windows-rs> |
 | windows_aarch64_gnullvm | 0.52.6 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/microsoft/windows-rs> |
 | windows_aarch64_msvc | 0.52.6 | MIT OR Apache-2.0 | MIT | yes | <https://github.com/microsoft/windows-rs> |
@@ -153,7 +159,7 @@ the others are development or build-time tools that are not distributed.
 | zerotrie | 0.2.5 | Unicode-3.0 | Unicode-3.0 | yes | <https://github.com/unicode-org/icu4x> |
 | zerovec | 0.11.8 | Unicode-3.0 | Unicode-3.0 | yes | <https://github.com/unicode-org/icu4x> |
 | zerovec-derive | 0.11.6 | Unicode-3.0 | Unicode-3.0 | yes | <https://github.com/unicode-org/icu4x> |
-| zip | 9.0.5 | MIT | MIT | yes | <https://github.com/zip-rs/zip2> |
+| zip | 9.2.2 | MIT | MIT | yes | <https://github.com/zip-rs/zip2> |
 | zlib-rs | 0.6.8 | Zlib | Zlib | yes | <https://github.com/trifectatechfoundation/zlib-rs> |
 | zmij | 1.0.23 | MIT | MIT | yes | <https://github.com/dtolnay/zmij> |
 | zopfli | 0.8.4 | Apache-2.0 | Apache-2.0 | yes | <https://github.com/zopfli-rs/zopfli> |
